@@ -35,7 +35,7 @@ func scanWithoutFlowControl(
 		}
 		itemsRead++
 
-		idx := itemsRead % uint64(numChannels) // indexer.GetIndex(item)
+		idx := indexer.GetIndex(item)
 		batches[idx].Append(item)
 
 		if batches[idx].Len() >= batchSize {

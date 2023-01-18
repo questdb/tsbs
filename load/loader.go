@@ -20,7 +20,7 @@ const (
 	// defaultBatchSize - default size of batches to be inserted
 	defaultBatchSize                = 10000
 	DefaultChannelCapacityFlagVal   = 0
-	defaultChannelCapacityPerWorker = 5
+	defaultChannelCapacityPerWorker = 15
 	errDBExistsFmt                  = "database \"%s\" exists: aborting."
 )
 
@@ -266,7 +266,7 @@ func (l *CommonBenchmarkRunner) createChannels(numChannels, capacity uint) []*du
 	var channels []*duplexChannel
 	// Create duplex communication channels
 	for i := uint(0); i < numChannels; i++ {
-		channels = append(channels, newDuplexChannel(int(capacity)))
+		channels = append(channels, newDuplexChannel(int(capacity)*10))
 	}
 
 	return channels
