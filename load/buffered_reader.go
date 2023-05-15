@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	defaultReadSize = 16 << 20 // 16 MB
+	defaultReadSize = 4 << 20 // 4 MB
 )
 
 // GetBufferedReader returns the buffered Reader that should be used by the file loader

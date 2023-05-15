@@ -266,7 +266,7 @@ func (l *CommonBenchmarkRunner) createChannels(numChannels, capacity uint) []*du
 	var channels []*duplexChannel
 	// Create duplex communication channels
 	for i := uint(0); i < numChannels; i++ {
-		channels = append(channels, newDuplexChannel(int(capacity)*10))
+		channels = append(channels, newDuplexChannel(int(capacity)))
 	}
 
 	return channels
