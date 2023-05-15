@@ -96,9 +96,6 @@ func (b *benchmark) GetDBCreator() targets.DBCreator {
 }
 
 func main() {
-	// github.com/pkg/profile
-	// defer profile.Start(profile.ProfilePath(".")).Stop()
-
 	bufPool = sync.Pool{
 		New: func() interface{} {
 			return bytes.NewBuffer(make([]byte, 0, 4*1024*1024))
