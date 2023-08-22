@@ -90,7 +90,7 @@ cases are implemented for each database:
 |CrateDB|X||
 |InfluxDB|X|X|
 |MongoDB|X|
-|QuestDB|X|X
+|QuestDB|X|
 |SiriDB|X|
 |TimescaleDB|X|X|
 |Timestream|X||
