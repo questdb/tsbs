@@ -97,6 +97,12 @@ Generated data can be loaded directly using the tool:
 ~/tmp/go/bin/tsbs_load_questdb --file /tmp/data --workers 4
 ```
 
+The benchmark tool supports InfluxDB Line Protocol authentication as well as TLS
+encryption:
+```bash
+~/tmp/go/bin/tsbs_load_questdb --file /tmp/data --tls --ilp-auth-id "my_user" --ilp-auth-token "GwBXoGG5c6NoUTLXnzMxw_uNiVa8PKobzx5EiuylMW0" --workers 4
+```
+
 Alternatively, shell scripts are provided which can be used to generate and load
 data:
 

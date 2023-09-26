@@ -59,12 +59,9 @@ func init() {
 	}
 
 	// Add an index to the hostname column in the cpu table
-	r, err := execQuery(daemonUrls[0], "show columns from cpu")
+	r, err := execQuery(daemonUrls[0], "SHOW COLUMN FROM cpu;")
 	if err == nil && r.Count != 0 {
-		r, err := execQuery(daemonUrls[0], "ALTER TABLE cpu ALTER COLUMN hostname ADD INDEX")
-		_ = r
-		//	       fmt.Println("error:", err)
-		//	       fmt.Printf("%+v\n", r)
+		_, err := execQuery(daemonUrls[0], "ALTER TABLE cpu ALTER COLUMN hostname ADD INDEX;")
 		if err == nil {
 			fmt.Println("Added index to hostname column of cpu table")
 		}
