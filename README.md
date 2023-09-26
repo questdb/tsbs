@@ -1,4 +1,9 @@
 # Time Series Benchmark Suite (TSBS)
+
+This is a fork of https://github.com/timescale/tsbs by Timescale. Read
+[this post](https://questdb.io/blog/optimizing-optimizer-time-series-benchmark-suite/)
+to understand why we (QuestDB) created it.
+
 This repo contains code for benchmarking several time series databases,
 including TimescaleDB, MongoDB, InfluxDB, CrateDB and Cassandra.
 This code is based on a fork of work initially made public by InfluxDB
@@ -49,6 +54,7 @@ one host in the dataset and the number of different hosts generated is
 defined by the `scale` flag (see below).
 
 ### Internet of Things (IoT)
+
 The second use case is meant to simulate the data load in an IoT
 environment. This use case simulates data streaming from a set of trucks
 belonging to a fictional trucking company. This use case simulates
