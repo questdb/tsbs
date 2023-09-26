@@ -177,14 +177,13 @@ func mockServerStart(cfg mockServerConfig) *mockServer {
 				}
 
 				for {
-					rc, err := conn.Read(data)
+					_, err := conn.Read(data)
 					if err != nil {
 						if err != io.EOF {
 							fatal("failed to read from connection: ", err.Error())
 						}
 						return
 					}
-					fmt.Println(conn, " read ", rc)
 				}
 			}()
 		}
