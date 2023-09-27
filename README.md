@@ -92,14 +92,15 @@ cases are implemented for each database:
 |CrateDB|X||
 |InfluxDB|X|X|
 |MongoDB|X|
-|QuestDB|X|X
+|QuestDB|X|X²|
 |SiriDB|X|
 |TimescaleDB|X|X|
 |Timestream|X||
-|VictoriaMetrics|X²||
+|VictoriaMetrics|X³||
 
 ¹ Does not support the `groupby-orderby-limit` query
-² Does not support the `groupby-orderby-limit`, `lastpoint`, `high-cpu-1`, `high-cpu-all` queries
+² Supports ingestion only
+³ Does not support the `groupby-orderby-limit`, `lastpoint`, `high-cpu-1`, `high-cpu-all` queries
 
 ## What the TSBS tests
 
