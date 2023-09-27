@@ -1,13 +1,22 @@
 # Time Series Benchmark Suite (TSBS)
 
-This is a fork of https://github.com/timescale/tsbs by Timescale. Read
+This repo contains code for benchmarking several time series databases,
+including QuestDB, TimescaleDB, MongoDB, InfluxDB, CrateDB, and Cassandra.
+This code is based on a fork of TSBS from TimescaleDB available at
+https://github.com/timescale/tsbs. Read
 [this post](https://questdb.io/blog/optimizing-optimizer-time-series-benchmark-suite/)
 to understand why we (QuestDB) created it.
 
-This repo contains code for benchmarking several time series databases,
-including TimescaleDB, MongoDB, InfluxDB, CrateDB and Cassandra.
-This code is based on a fork of work initially made public by InfluxDB
-at https://github.com/influxdata/influxdb-comparisons.
+This fork derives from the original TSBS and includes a number of changes
+such as:
+* Loader optimizations for QuestDB making it capable of 4M+ rows/s
+ingestion.
+* A number of bugfixes in query generation.
+* InfluxDB v2 support based on
+[this PR](https://github.com/timescale/tsbs/pull/209). Original TSBS
+supports InfluxDB v1 only.
+
+All kinds of pull requests are welcome.
 
 Current databases supported:
 
@@ -40,6 +49,7 @@ database in the TSBS, feel free to open a pull request to add it!
 Currently, TSBS supports two use cases.
 
 ### Dev ops
+
 A 'dev ops' use case, which comes in two forms. The full form is used to
 generate, insert, and measure data from 9 'systems' that could be monitored
 in a real world dev ops scenario (e.g., CPU, memory, disk, etc).
