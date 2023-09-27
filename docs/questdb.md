@@ -138,8 +138,8 @@ well as TLS encryption:
 ```bash
 ./tsbs_load_questdb --file /tmp/data --workers 4 \
   --tls \
-  --ilp-auth-id "my_user" \
-  --ilp-auth-token "GwBXoGG5c6NoUTLXnzMxw_uNiVa8PKobzx5EiuylMW0"
+  --auth-id "my_user" \
+  --auth-token "GwBXoGG5c6NoUTLXnzMxw_uNiVa8PKobzx5EiuylMW0"
 ```
 
 The query benchmark tool also supports basic HTTP authentication and TLS encryption:
