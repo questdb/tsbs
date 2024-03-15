@@ -83,15 +83,24 @@ func (w *HTTPClient) Do(q *query.HTTP, opts *HTTPClientDoOptions) (lag float64, 
 		panic("http request did not return status 200 OK")
 	}
 
-	var body []byte
-	body, err = io.ReadAll(resp.Body)
-	if err != nil {
-		panic(err)
-	}
+	if opts == nil || (opts.Debug == 0 && !opts.PrettyPrintResponses) {
+		// Read the body, but don't copy it anywhere.
+		_, err := io.Copy(io.Discard, resp.Body)
+		if err != nil {
+			panic(err)
+		}
 
-	lag = float64(time.Since(start).Nanoseconds()) / 1e6 // milliseconds
+		lag = float64(time.Since(start).Nanoseconds()) / 1e6 // milliseconds
+	} else {
+		// Copy the body to a buffer since we may need to print it.
+		var body []byte
+		body, err = io.ReadAll(resp.Body)
+		if err != nil {
+			panic(err)
+		}
 
-	if opts != nil {
+		lag = float64(time.Since(start).Nanoseconds()) / 1e6 // milliseconds
+
 		// Print debug messages, if applicable:
 		switch opts.Debug {
 		case 1:
