@@ -1,9 +1,10 @@
 package questdb
 
 import (
+	"io"
+
 	"github.com/timescale/tsbs/pkg/data"
 	"github.com/timescale/tsbs/pkg/data/serialize"
-	"io"
 )
 
 // Serializer writes a Point in a serialized form for MongoDB
@@ -19,11 +20,14 @@ type Serializer struct{}
 // foo,tag0=bar baz=-1.0 100\n
 func (s *Serializer) Serialize(p *data.Point, w io.Writer) (err error) {
 	buf := make([]byte, 0, 1024)
-	buf = append(buf, p.MeasurementName()...)
 
 	fakeTags := make([]int, 0)
 	tagKeys := p.TagKeys()
 	tagValues := p.TagValues()
+
+	buf = append(buf, p.MeasurementName()...)
+	buf = append(buf, []byte("_")...)
+	buf = append(buf, []byte(tagValues[0].(string))...)
 	for i := 0; i < len(tagKeys); i++ {
 		if tagValues[i] == nil {
 			continue
