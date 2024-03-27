@@ -1,9 +1,11 @@
 package questdb
 
 import (
+	"io"
+	"strconv"
+
 	"github.com/timescale/tsbs/pkg/data"
 	"github.com/timescale/tsbs/pkg/data/serialize"
-	"io"
 )
 
 // Serializer writes a Point in a serialized form for MongoDB
@@ -65,6 +67,12 @@ func (s *Serializer) Serialize(p *data.Point, w io.Writer) (err error) {
 		}
 		firstFieldFormatted = true
 		buf = appendField(buf, fieldKeys[i], value)
+	}
+
+	// Insert 980 additional columns
+	for i := 0; i < 980; i++ {
+		buf = append(buf, ',')
+		buf = appendField(buf, []byte("long_"+strconv.Itoa(i)), i)
 	}
 
 	// first field wasn't formatted, because all the fields were nil, InfluxDB will reject the insert
