@@ -2,9 +2,10 @@ package timescaledb
 
 import (
 	"fmt"
-	"github.com/timescale/tsbs/pkg/data"
-	"github.com/timescale/tsbs/pkg/data/serialize"
 	"io"
+
+	"github.com/questdb/tsbs/pkg/data"
+	"github.com/questdb/tsbs/pkg/data/serialize"
 )
 
 // Serializer writes a Point in a serialized form for TimescaleDB

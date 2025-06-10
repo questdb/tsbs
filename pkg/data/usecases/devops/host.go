@@ -2,12 +2,13 @@ package devops
 
 import (
 	"fmt"
-	"github.com/timescale/tsbs/pkg/data/usecases/common"
 	"math"
 	"math/rand"
 	"reflect"
 	"strconv"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/data/usecases/common"
 )
 
 // Count of choices for auto-generated tag values:

@@ -2,9 +2,10 @@ package config
 
 import (
 	"fmt"
+
+	"github.com/questdb/tsbs/internal/utils"
+	"github.com/questdb/tsbs/pkg/data/usecases/common"
 	"github.com/spf13/pflag"
-	"github.com/timescale/tsbs/internal/utils"
-	"github.com/timescale/tsbs/pkg/data/usecases/common"
 )
 
 const ErrEmptyQueryType = "query type cannot be empty"

@@ -1,10 +1,11 @@
 package devops
 
 import (
-	"github.com/timescale/tsbs/pkg/data"
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/data"
 )
 
 func testIfInInt64Slice(t *testing.T, arr []int64, choice int64) {

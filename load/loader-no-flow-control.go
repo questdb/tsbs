@@ -1,10 +1,11 @@
 package load
 
 import (
-	"github.com/timescale/tsbs/pkg/targets"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/targets"
 )
 
 type noFlowBenchmarkRunner struct {

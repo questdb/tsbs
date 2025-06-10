@@ -1,13 +1,14 @@
 package timestream
 
 import (
+	"log"
+	"sync"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/timestreamwrite"
 	"github.com/pkg/errors"
-	"github.com/timescale/tsbs/pkg/data/usecases/common"
-	"github.com/timescale/tsbs/pkg/targets"
-	"log"
-	"sync"
+	"github.com/questdb/tsbs/pkg/data/usecases/common"
+	"github.com/questdb/tsbs/pkg/targets"
 )
 
 const maxRecordsPerWriteRequest = 100

@@ -5,13 +5,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/questdb/tsbs/internal/inputs"
+	"github.com/questdb/tsbs/load"
+	"github.com/questdb/tsbs/pkg/data"
+	"github.com/questdb/tsbs/pkg/data/source"
+	"github.com/questdb/tsbs/pkg/data/usecases/common"
+	"github.com/questdb/tsbs/pkg/targets"
 	"github.com/timescale/promscale/pkg/prompb"
-	"github.com/timescale/tsbs/internal/inputs"
-	"github.com/timescale/tsbs/load"
-	"github.com/timescale/tsbs/pkg/data"
-	"github.com/timescale/tsbs/pkg/data/source"
-	"github.com/timescale/tsbs/pkg/data/usecases/common"
-	"github.com/timescale/tsbs/pkg/targets"
 )
 
 func NewBenchmark(promSpecificConfig *SpecificConfig, dataSourceConfig *source.DataSourceConfig) (targets.Benchmark, error) {

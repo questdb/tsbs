@@ -3,9 +3,10 @@ package mongo
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/timescale/tsbs/pkg/data"
 	"io"
 	"sync"
+
+	"github.com/questdb/tsbs/pkg/data"
 
 	flatbuffers "github.com/google/flatbuffers/go"
 )

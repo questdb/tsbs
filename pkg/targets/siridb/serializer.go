@@ -3,10 +3,11 @@ package siridb
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/timescale/tsbs/pkg/data"
 	"io"
 	"log"
 	"strconv"
+
+	"github.com/questdb/tsbs/pkg/data"
 
 	qpack "github.com/transceptor-technology/go-qpack"
 )

@@ -2,9 +2,10 @@ package iot
 
 import (
 	"fmt"
-	"github.com/timescale/tsbs/pkg/data/usecases/common"
 	"math/rand"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/data/usecases/common"
 )
 
 const (

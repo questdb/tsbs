@@ -3,9 +3,10 @@ package victoriametrics
 import (
 	"bufio"
 	"bytes"
-	"github.com/timescale/tsbs/pkg/data"
 	"sync"
 	"testing"
+
+	"github.com/questdb/tsbs/pkg/data"
 )
 
 func TestBatch(t *testing.T) {

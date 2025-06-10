@@ -2,10 +2,11 @@ package devops
 
 import (
 	"bytes"
-	"github.com/timescale/tsbs/pkg/data"
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/data"
 )
 
 func testIfInByteStringSlice(t *testing.T, arr [][]byte, choice []byte) {

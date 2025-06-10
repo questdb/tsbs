@@ -1,10 +1,11 @@
 package iot
 
 import (
-	"github.com/timescale/tsbs/pkg/data"
-	"github.com/timescale/tsbs/pkg/data/usecases/common"
 	"testing"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/data"
+	"github.com/questdb/tsbs/pkg/data/usecases/common"
 )
 
 func TestDiagnosticsMeasurementToPoint(t *testing.T) {

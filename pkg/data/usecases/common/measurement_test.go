@@ -1,10 +1,11 @@
 package common
 
 import (
-	"github.com/timescale/tsbs/pkg/data"
 	"math"
 	"testing"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/data"
 )
 
 func ldmToFieldLabels(ldm []LabeledDistributionMaker) [][]byte {

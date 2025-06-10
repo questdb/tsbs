@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timescale/tsbs/pkg/targets"
+	"github.com/questdb/tsbs/pkg/targets"
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 )

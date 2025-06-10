@@ -3,16 +3,17 @@ package timestream
 import (
 	"bufio"
 	"fmt"
-	"github.com/aws/aws-sdk-go/service/timestreamwrite"
-	"github.com/pkg/errors"
-	"github.com/timescale/tsbs/internal/inputs"
-	"github.com/timescale/tsbs/load"
-	"github.com/timescale/tsbs/pkg/data"
-	"github.com/timescale/tsbs/pkg/data/source"
-	"github.com/timescale/tsbs/pkg/targets"
-	"github.com/timescale/tsbs/pkg/targets/common"
 	"log"
 	"time"
+
+	"github.com/aws/aws-sdk-go/service/timestreamwrite"
+	"github.com/pkg/errors"
+	"github.com/questdb/tsbs/internal/inputs"
+	"github.com/questdb/tsbs/load"
+	"github.com/questdb/tsbs/pkg/data"
+	"github.com/questdb/tsbs/pkg/data/source"
+	"github.com/questdb/tsbs/pkg/targets"
+	"github.com/questdb/tsbs/pkg/targets/common"
 )
 
 type benchmark struct {

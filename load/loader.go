@@ -10,10 +10,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/timescale/tsbs/pkg/targets"
+	"github.com/questdb/tsbs/pkg/targets"
 
+	"github.com/questdb/tsbs/load/insertstrategy"
 	"github.com/spf13/pflag"
-	"github.com/timescale/tsbs/load/insertstrategy"
 )
 
 const (
@@ -226,7 +226,7 @@ func (l *CommonBenchmarkRunner) useDBCreator(dbc targets.DBCreator) func() {
 		case targets.DBCreatorCloser:
 			closeFn = dbcc.Close
 		}
-		
+
 		exists := false
 		if l.DoAbortOnExist || l.DoCreateDB {
 			exists = dbc.DBExists(l.DBName)

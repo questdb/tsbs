@@ -2,12 +2,13 @@ package clickhouse
 
 import (
 	"fmt"
-	"github.com/jmoiron/sqlx"
-	"github.com/timescale/tsbs/pkg/targets"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/jmoiron/sqlx"
+	"github.com/questdb/tsbs/pkg/targets"
 )
 
 // load.Processor interface implementation

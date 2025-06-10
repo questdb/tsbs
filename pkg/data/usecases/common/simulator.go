@@ -1,9 +1,10 @@
 package common
 
 import (
-	"github.com/timescale/tsbs/pkg/data"
 	"reflect"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/data"
 )
 
 // SimulatorConfig is an interface to create a Simulator from a time.Duration.

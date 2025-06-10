@@ -1,7 +1,7 @@
 package load
 
 import (
-	"github.com/timescale/tsbs/pkg/targets"
+	"github.com/questdb/tsbs/pkg/targets"
 )
 
 // scanWithoutFlowControl reads data from the DataSource ds until a limit is reached (if -1, all items are read).

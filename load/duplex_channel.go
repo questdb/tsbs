@@ -1,6 +1,6 @@
 package load
 
-import "github.com/timescale/tsbs/pkg/targets"
+import "github.com/questdb/tsbs/pkg/targets"
 
 // duplexChannel acts as a two-way channel for communicating from a scan routine
 // to a worker goroutine. The toWorker channel sends data to the worker for it
