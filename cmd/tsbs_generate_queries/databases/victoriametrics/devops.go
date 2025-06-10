@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/uses/devops"
-	"github.com/timescale/tsbs/pkg/query"
+	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/uses/devops"
+	"github.com/questdb/tsbs/pkg/query"
 )
 
 // Devops produces PromQL queries for all the devops query types.
@@ -41,9 +41,11 @@ func (d *Devops) HighCPUForHosts(qi query.Query, nHosts int) {
 // per minute for nhosts hosts,
 // e.g. in pseudo-PromQL:
 // max(
-// 	max_over_time(
-// 		{__name__=~"metric1|metric2...|metricN",hostname=~"hostname1|hostname2...|hostnameN"}[1m]
-// 	)
+//
+//	max_over_time(
+//		{__name__=~"metric1|metric2...|metricN",hostname=~"hostname1|hostname2...|hostnameN"}[1m]
+//	)
+//
 // ) by (__name__)
 func (d *Devops) GroupByTime(qq query.Query, nHosts, numMetrics int, timeRange time.Duration) {
 	metrics := mustGetCPUMetricsSlice(numMetrics)
@@ -62,9 +64,11 @@ func (d *Devops) GroupByTime(qq query.Query, nHosts, numMetrics int, timeRange t
 // e.g. in pseudo-PromQL:
 //
 // avg(
-// 	avg_over_time(
-// 		{__name__=~"metric1|metric2...|metricN"}[1h]
-// 	)
+//
+//	avg_over_time(
+//		{__name__=~"metric1|metric2...|metricN"}[1h]
+//	)
+//
 // ) by (__name__, hostname)
 //
 // Resultsets:
@@ -87,9 +91,11 @@ func (d *Devops) GroupByTimeAndPrimaryTag(qq query.Query, numMetrics int) {
 // e.g. in pseudo-PromQL:
 //
 // max(
-// 	max_over_time(
-// 		{hostname=~"hostname1|hostname2...|hostnameN"}[1h]
-// 	)
+//
+//	max_over_time(
+//		{hostname=~"hostname1|hostname2...|hostnameN"}[1h]
+//	)
+//
 // ) by (__name__)
 func (d *Devops) MaxAllCPU(qq query.Query, nHosts int, duration time.Duration) {
 	hosts := d.mustGetRandomHosts(nHosts)

@@ -3,9 +3,9 @@ package timestream
 import (
 	"time"
 
-	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/uses/devops"
-	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/utils"
-	"github.com/timescale/tsbs/pkg/query"
+	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/uses/devops"
+	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/utils"
+	"github.com/questdb/tsbs/pkg/query"
 )
 
 const goTimeFmt = "2006-01-02 15:04:05.999999 -0700"

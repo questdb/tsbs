@@ -3,12 +3,13 @@ package timestream
 import (
 	"bufio"
 	"fmt"
-	"github.com/timescale/tsbs/pkg/data"
-	"github.com/timescale/tsbs/pkg/data/usecases/common"
 	"log"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/data"
+	"github.com/questdb/tsbs/pkg/data/usecases/common"
 )
 
 const (

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/uses/devops"
-	"github.com/timescale/tsbs/pkg/query"
+	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/uses/devops"
+	"github.com/questdb/tsbs/pkg/query"
 )
 
 // TODO: Remove the need for this by continuing to bubble up errors
@@ -76,9 +76,11 @@ const clickhouseTimeStringFormat = "2006-01-02 15:04:05"
 // SELECT MAX(metric1), ..., MAX(metricN)
 // FROM cpu
 // WHERE
-// 		(hostname = '$HOSTNAME_1' OR ... OR hostname = '$HOSTNAME_N')
-// 		AND time >= '$HOUR_START'
-// 		AND time < '$HOUR_END'
+//
+//	(hostname = '$HOSTNAME_1' OR ... OR hostname = '$HOSTNAME_N')
+//	AND time >= '$HOUR_START'
+//	AND time < '$HOUR_END'
+//
 // GROUP BY hour
 // ORDER BY hour
 //
@@ -290,9 +292,11 @@ func (d *Devops) LastPointPerHost(qi query.Query) {
 // SELECT minute, max(metric1), ..., max(metricN)
 // FROM cpu
 // WHERE
-// 		(hostname = '$HOSTNAME_1' OR ... OR hostname = '$HOSTNAME_N')
-// 	AND time >= '$HOUR_START'
-// 	AND time < '$HOUR_END'
+//
+//		(hostname = '$HOSTNAME_1' OR ... OR hostname = '$HOSTNAME_N')
+//	AND time >= '$HOUR_START'
+//	AND time < '$HOUR_END'
+//
 // GROUP BY minute
 // ORDER BY minute ASC
 //

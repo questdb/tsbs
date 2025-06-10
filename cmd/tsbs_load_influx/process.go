@@ -3,8 +3,9 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"github.com/timescale/tsbs/pkg/targets"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/targets"
 
 	"github.com/valyala/fasthttp"
 )

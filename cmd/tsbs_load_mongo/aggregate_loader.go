@@ -9,10 +9,10 @@ import (
 
 	"github.com/globalsign/mgo"
 	"github.com/globalsign/mgo/bson"
-	"github.com/timescale/tsbs/load"
-	"github.com/timescale/tsbs/pkg/data"
-	"github.com/timescale/tsbs/pkg/targets"
-	"github.com/timescale/tsbs/pkg/targets/mongo"
+	"github.com/questdb/tsbs/load"
+	"github.com/questdb/tsbs/pkg/data"
+	"github.com/questdb/tsbs/pkg/targets"
+	"github.com/questdb/tsbs/pkg/targets/mongo"
 )
 
 type hostnameIndexer struct {
@@ -103,23 +103,24 @@ func (p *aggProcessor) Init(_ int, doLoad, _ bool) {
 // is first encountered)
 //
 // A document is structured like so:
-//  {
-//    "doc_id": "day_x_00",
-//    "key_id": "x_00",
-//    "measurement": "cpu",
-//    "tags": {
-//      "hostname": "host0",
-//      ...
-//    },
-//    "events": [
-//      [
-//        {
-//          "field1": 0.0,
-//          ...
-//		  }
-//      ]
-//    ]
-//  }
+//
+//	 {
+//	   "doc_id": "day_x_00",
+//	   "key_id": "x_00",
+//	   "measurement": "cpu",
+//	   "tags": {
+//	     "hostname": "host0",
+//	     ...
+//	   },
+//	   "events": [
+//	     [
+//	       {
+//	         "field1": 0.0,
+//	         ...
+//			  }
+//	     ]
+//	   ]
+//	 }
 func (p *aggProcessor) ProcessBatch(b targets.Batch, doLoad bool) (uint64, uint64) {
 	docToEvents := make(map[string][]*point)
 	batch := b.(*batch)

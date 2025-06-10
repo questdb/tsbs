@@ -1,8 +1,9 @@
 package timescaledb
 
 import (
-	"github.com/timescale/tsbs/pkg/data/serialize"
 	"testing"
+
+	"github.com/questdb/tsbs/pkg/data/serialize"
 )
 
 func TestTimescaleDBSerializerSerialize(t *testing.T) {

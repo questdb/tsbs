@@ -3,12 +3,13 @@ package victoriametrics
 import (
 	"bytes"
 	"fmt"
-	"github.com/timescale/tsbs/pkg/data"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/questdb/tsbs/pkg/data"
 )
 
 func TestProcessorProcessBatch(t *testing.T) {

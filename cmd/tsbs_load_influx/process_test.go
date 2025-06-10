@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/timescale/tsbs/pkg/data"
+	"github.com/questdb/tsbs/pkg/data"
 )
 
 func emptyLog(_ string, _ ...interface{}) (int, error) {

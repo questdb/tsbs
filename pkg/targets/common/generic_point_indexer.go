@@ -1,9 +1,10 @@
 package common
 
 import (
-	"github.com/timescale/tsbs/pkg/data"
 	"hash"
 	"hash/fnv"
+
+	"github.com/questdb/tsbs/pkg/data"
 )
 
 // hashPropertySelectFn defines a function that

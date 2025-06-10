@@ -1,8 +1,9 @@
 package serialize
 
 import (
-	"github.com/timescale/tsbs/pkg/data"
 	"io"
+
+	"github.com/questdb/tsbs/pkg/data"
 )
 
 // PointSerializer serializes a Point for writing

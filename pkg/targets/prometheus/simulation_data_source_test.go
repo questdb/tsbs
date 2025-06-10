@@ -1,11 +1,12 @@
 package prometheus
 
 import (
-	"github.com/timescale/promscale/pkg/prompb"
-	"github.com/timescale/tsbs/pkg/data"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/data"
+	"github.com/timescale/promscale/pkg/prompb"
 )
 
 func TestTimeSeriesIterator(t *testing.T) {

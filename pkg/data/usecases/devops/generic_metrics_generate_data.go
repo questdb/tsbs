@@ -1,10 +1,11 @@
 package devops
 
 import (
-	"github.com/timescale/tsbs/pkg/data"
-	"github.com/timescale/tsbs/pkg/data/usecases/common"
 	"math"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/data"
+	"github.com/questdb/tsbs/pkg/data/usecases/common"
 )
 
 type GenericMetricsSimulatorConfig struct {

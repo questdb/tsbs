@@ -4,11 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
-	"github.com/timescale/tsbs/pkg/data"
-	"github.com/timescale/tsbs/pkg/data/serialize"
 	"io"
 	"log"
 	"testing"
+
+	"github.com/questdb/tsbs/pkg/data"
+	"github.com/questdb/tsbs/pkg/data/serialize"
 
 	qpack "github.com/transceptor-technology/go-qpack"
 )

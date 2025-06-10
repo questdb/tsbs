@@ -3,11 +3,11 @@ package timestream
 import (
 	"github.com/blagojts/viper"
 	"github.com/pkg/errors"
+	"github.com/questdb/tsbs/pkg/data/serialize"
+	"github.com/questdb/tsbs/pkg/data/source"
+	"github.com/questdb/tsbs/pkg/targets"
+	"github.com/questdb/tsbs/pkg/targets/constants"
 	"github.com/spf13/pflag"
-	"github.com/timescale/tsbs/pkg/data/serialize"
-	"github.com/timescale/tsbs/pkg/data/source"
-	"github.com/timescale/tsbs/pkg/targets"
-	"github.com/timescale/tsbs/pkg/targets/constants"
 )
 
 type implementedTarget struct{}

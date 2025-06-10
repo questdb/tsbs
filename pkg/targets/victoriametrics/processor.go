@@ -2,10 +2,11 @@ package victoriametrics
 
 import (
 	"bytes"
-	"github.com/timescale/tsbs/pkg/targets"
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/targets"
 )
 
 type processor struct {

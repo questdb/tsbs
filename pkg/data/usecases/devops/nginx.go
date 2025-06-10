@@ -2,11 +2,12 @@ package devops
 
 import (
 	"fmt"
-	"github.com/timescale/tsbs/pkg/data"
-	"github.com/timescale/tsbs/pkg/data/usecases/common"
 	"math/rand"
 	"strconv"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/data"
+	"github.com/questdb/tsbs/pkg/data/usecases/common"
 )
 
 var (
