@@ -214,6 +214,7 @@ func TestExtractTagNamesAndTypes(t *testing.T) {
 
 	}
 }
+
 func TestGenerateTagsTableQuery(t *testing.T) {
 	testCases := []struct {
 		in  []string
