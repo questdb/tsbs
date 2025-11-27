@@ -2,10 +2,11 @@ package devops
 
 import (
 	"fmt"
-	"github.com/timescale/tsbs/pkg/data"
 	"math"
 	"testing"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/data"
 )
 
 const dateLayout = "2006-01-02"

@@ -2,9 +2,10 @@ package common
 
 import (
 	"fmt"
-	"github.com/timescale/tsbs/pkg/data"
 	"testing"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/data"
 )
 
 const testGeneratorScale = 100

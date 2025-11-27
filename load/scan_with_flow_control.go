@@ -3,7 +3,7 @@ package load
 import (
 	"reflect"
 
-	"github.com/timescale/tsbs/pkg/targets"
+	"github.com/questdb/tsbs/pkg/targets"
 )
 
 // ackAndMaybeSend adjust the unsent batches count

@@ -2,9 +2,10 @@ package crate
 
 import (
 	"fmt"
-	"github.com/timescale/tsbs/pkg/data"
-	"github.com/timescale/tsbs/pkg/data/serialize"
 	"io"
+
+	"github.com/questdb/tsbs/pkg/data"
+	"github.com/questdb/tsbs/pkg/data/serialize"
 )
 
 const TAB = '\t'
@@ -18,7 +19,8 @@ type Serializer struct{}
 // and metric values.
 //
 // An example of a serialized point:
-//     cpu\t{"hostname":"host_0","rack":"1"}\t1451606400000000000\t38\t0\t50\t41234
+//
+//	cpu\t{"hostname":"host_0","rack":"1"}\t1451606400000000000\t38\t0\t50\t41234
 func (s *Serializer) Serialize(p *data.Point, w io.Writer) error {
 	buf := make([]byte, 0, 256)
 

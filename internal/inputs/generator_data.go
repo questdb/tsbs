@@ -8,12 +8,12 @@ import (
 	"os"
 	"sort"
 
-	"github.com/timescale/tsbs/pkg/data"
-	"github.com/timescale/tsbs/pkg/data/serialize"
-	"github.com/timescale/tsbs/pkg/data/usecases"
-	"github.com/timescale/tsbs/pkg/data/usecases/common"
-	"github.com/timescale/tsbs/pkg/targets"
-	"github.com/timescale/tsbs/pkg/targets/constants"
+	"github.com/questdb/tsbs/pkg/data"
+	"github.com/questdb/tsbs/pkg/data/serialize"
+	"github.com/questdb/tsbs/pkg/data/usecases"
+	"github.com/questdb/tsbs/pkg/data/usecases/common"
+	"github.com/questdb/tsbs/pkg/targets"
+	"github.com/questdb/tsbs/pkg/targets/constants"
 )
 
 // Error messages when using a DataGenerator
@@ -139,7 +139,7 @@ func (g *DataGenerator) getSerializer(sim common.Simulator, target targets.Imple
 	return target.Serializer(), nil
 }
 
-//TODO should be implemented in targets package
+// TODO should be implemented in targets package
 func (g *DataGenerator) writeHeader(headers *common.GeneratedDataHeaders) {
 	g.bufOut.WriteString("tags")
 

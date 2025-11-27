@@ -1,8 +1,9 @@
 package common
 
 import (
-	"github.com/timescale/tsbs/pkg/data"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/data"
 )
 
 // SubsystemMeasurement represents a collection of measurement distributions and a start time.

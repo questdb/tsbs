@@ -13,12 +13,12 @@ import (
 	"time"
 
 	"github.com/blagojts/viper"
+	"github.com/questdb/tsbs/internal/utils"
+	"github.com/questdb/tsbs/load"
+	"github.com/questdb/tsbs/pkg/targets"
+	"github.com/questdb/tsbs/pkg/targets/constants"
+	"github.com/questdb/tsbs/pkg/targets/initializers"
 	"github.com/spf13/pflag"
-	"github.com/timescale/tsbs/internal/utils"
-	"github.com/timescale/tsbs/load"
-	"github.com/timescale/tsbs/pkg/targets"
-	"github.com/timescale/tsbs/pkg/targets/constants"
-	"github.com/timescale/tsbs/pkg/targets/initializers"
 )
 
 // Program option vars:

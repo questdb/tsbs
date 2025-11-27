@@ -4,9 +4,9 @@ import (
 	"bufio"
 	"bytes"
 
-	"github.com/timescale/tsbs/pkg/data"
-	"github.com/timescale/tsbs/pkg/data/usecases/common"
-	"github.com/timescale/tsbs/pkg/targets"
+	"github.com/questdb/tsbs/pkg/data"
+	"github.com/questdb/tsbs/pkg/data/usecases/common"
+	"github.com/questdb/tsbs/pkg/targets"
 )
 
 const errNotThreeTuplesFmt = "parse error: line does not have 3 tuples, has %d"

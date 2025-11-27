@@ -1,9 +1,10 @@
 package akumuli
 
 import (
-	"github.com/timescale/tsbs/load"
-	"github.com/timescale/tsbs/pkg/targets"
 	"sync"
+
+	"github.com/questdb/tsbs/load"
+	"github.com/questdb/tsbs/pkg/targets"
 )
 
 func NewBenchmark(loadFileName, endpoint string, bufPool *sync.Pool) targets.Benchmark {

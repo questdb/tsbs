@@ -1,13 +1,14 @@
 package prometheus
 
 import (
-	"github.com/timescale/promscale/pkg/prompb"
-	"github.com/timescale/tsbs/cmd/tsbs_load_prometheus/adapter/noop"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"sync"
 	"testing"
+
+	"github.com/questdb/tsbs/cmd/tsbs_load_prometheus/adapter/noop"
+	"github.com/timescale/promscale/pkg/prompb"
 )
 
 func TestPrometheusLoader(t *testing.T) {

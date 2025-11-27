@@ -12,7 +12,7 @@ import (
 	"math/big"
 	"net"
 
-	"github.com/timescale/tsbs/pkg/targets"
+	"github.com/questdb/tsbs/pkg/targets"
 )
 
 type processor struct {

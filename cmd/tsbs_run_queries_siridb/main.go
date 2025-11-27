@@ -14,10 +14,10 @@ import (
 	siridb "github.com/SiriDB/go-siridb-connector"
 	"github.com/blagojts/viper"
 	_ "github.com/lib/pq"
+	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/uses/devops"
+	"github.com/questdb/tsbs/internal/utils"
+	"github.com/questdb/tsbs/pkg/query"
 	"github.com/spf13/pflag"
-	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/uses/devops"
-	"github.com/timescale/tsbs/internal/utils"
-	"github.com/timescale/tsbs/pkg/query"
 )
 
 // Program option vars:

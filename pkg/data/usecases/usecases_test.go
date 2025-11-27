@@ -1,12 +1,13 @@
 package usecases
 
 import (
-	"github.com/timescale/tsbs/pkg/data/usecases/common"
-	"github.com/timescale/tsbs/pkg/data/usecases/devops"
-	"github.com/timescale/tsbs/pkg/data/usecases/iot"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/data/usecases/common"
+	"github.com/questdb/tsbs/pkg/data/usecases/devops"
+	"github.com/questdb/tsbs/pkg/data/usecases/iot"
 )
 
 const defaultLogInterval = 10 * time.Second

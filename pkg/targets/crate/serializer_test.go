@@ -1,8 +1,9 @@
 package crate
 
 import (
-	"github.com/timescale/tsbs/pkg/data/serialize"
 	"testing"
+
+	"github.com/questdb/tsbs/pkg/data/serialize"
 )
 
 func TestCrateDBSerializerSerialize(t *testing.T) {

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/timescale/tsbs/pkg/data/usecases/common"
-	"github.com/timescale/tsbs/pkg/targets/constants"
+	"github.com/questdb/tsbs/pkg/data/usecases/common"
+	"github.com/questdb/tsbs/pkg/targets/constants"
 )
 
 const (

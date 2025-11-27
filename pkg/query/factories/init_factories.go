@@ -1,19 +1,19 @@
 package factories
 
 import (
-	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/databases/akumuli"
-	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/databases/cassandra"
-	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/databases/clickhouse"
-	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/databases/cratedb"
-	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/databases/influx"
-	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/databases/mongo"
-	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/databases/questdb"
-	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/databases/siridb"
-	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/databases/timescaledb"
-	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/databases/timestream"
-	"github.com/timescale/tsbs/cmd/tsbs_generate_queries/databases/victoriametrics"
-	"github.com/timescale/tsbs/pkg/query/config"
-	"github.com/timescale/tsbs/pkg/targets/constants"
+	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/databases/akumuli"
+	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/databases/cassandra"
+	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/databases/clickhouse"
+	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/databases/cratedb"
+	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/databases/influx"
+	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/databases/mongo"
+	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/databases/questdb"
+	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/databases/siridb"
+	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/databases/timescaledb"
+	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/databases/timestream"
+	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/databases/victoriametrics"
+	"github.com/questdb/tsbs/pkg/query/config"
+	"github.com/questdb/tsbs/pkg/targets/constants"
 )
 
 func InitQueryFactories(config *config.QueryGeneratorConfig) map[string]interface{} {

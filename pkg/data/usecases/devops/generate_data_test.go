@@ -1,9 +1,10 @@
 package devops
 
 import (
-	"github.com/timescale/tsbs/pkg/data"
 	"testing"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/data"
 )
 
 const testDevopsHostCount = 100

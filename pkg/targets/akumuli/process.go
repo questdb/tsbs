@@ -2,10 +2,11 @@ package akumuli
 
 import (
 	"encoding/binary"
-	"github.com/timescale/tsbs/pkg/targets"
 	"log"
 	"net"
 	"sync"
+
+	"github.com/questdb/tsbs/pkg/targets"
 )
 
 type processor struct {

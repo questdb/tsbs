@@ -1,7 +1,7 @@
 package source
 
 import (
-	"github.com/timescale/tsbs/pkg/data/usecases/common"
+	"github.com/questdb/tsbs/pkg/data/usecases/common"
 )
 
 const (

@@ -1,9 +1,10 @@
 package timestream
 
 import (
-	"github.com/timescale/tsbs/pkg/data"
-	"github.com/timescale/tsbs/pkg/targets"
 	"sync"
+
+	"github.com/questdb/tsbs/pkg/data"
+	"github.com/questdb/tsbs/pkg/targets"
 )
 
 // NewBatchFactory returns a object pool backed

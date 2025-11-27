@@ -4,12 +4,12 @@ import (
 	"fmt"
 
 	"github.com/blagojts/viper"
+	"github.com/questdb/tsbs/internal/utils"
+	"github.com/questdb/tsbs/load"
+	"github.com/questdb/tsbs/pkg/data/source"
+	"github.com/questdb/tsbs/pkg/targets"
+	"github.com/questdb/tsbs/pkg/targets/prometheus"
 	"github.com/spf13/pflag"
-	"github.com/timescale/tsbs/internal/utils"
-	"github.com/timescale/tsbs/load"
-	"github.com/timescale/tsbs/pkg/data/source"
-	"github.com/timescale/tsbs/pkg/targets"
-	"github.com/timescale/tsbs/pkg/targets/prometheus"
 )
 
 // runs the benchmark

@@ -2,11 +2,12 @@ package timestream
 
 import (
 	"fmt"
-	"github.com/aws/aws-sdk-go/service/timestreamwrite"
-	"github.com/pkg/errors"
-	"github.com/timescale/tsbs/pkg/targets"
 	"log"
 	"time"
+
+	"github.com/aws/aws-sdk-go/service/timestreamwrite"
+	"github.com/pkg/errors"
+	"github.com/questdb/tsbs/pkg/targets"
 )
 
 const (

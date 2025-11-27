@@ -3,12 +3,13 @@ package load
 import (
 	"bytes"
 	"fmt"
-	"github.com/timescale/tsbs/pkg/targets"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/targets"
 )
 
 type testProcessor struct {

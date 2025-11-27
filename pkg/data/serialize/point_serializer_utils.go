@@ -3,9 +3,10 @@ package serialize
 import (
 	"bytes"
 	"fmt"
-	"github.com/timescale/tsbs/pkg/data"
 	"testing"
 	"time"
+
+	"github.com/questdb/tsbs/pkg/data"
 )
 
 var (

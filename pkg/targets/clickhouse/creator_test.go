@@ -10,26 +10,36 @@ func TestGenerateTagsTableQuery(t *testing.T) {
 		inTagNames []string
 		inTagTypes []string
 		out        string
-	}{{
-		inTagNames: []string{"tag1"},
-		inTagTypes: []string{"string"},
-		out: "CREATE TABLE tags(\n" +
-			"created_date Date     DEFAULT today(),\n" +
-			"created_at   DateTime DEFAULT now(),\n" +
-			"id           UInt32,\n" +
-			"tag1 Nullable(String)" +
-			") ENGINE = MergeTree(created_date, (id), 8192)"}, {
-		inTagNames: []string{"tag1", "tag2", "tag3", "tag4"},
-		inTagTypes: []string{"int32", "int64", "float32", "float64"},
-		out: "CREATE TABLE tags(\n" +
-			"created_date Date     DEFAULT today(),\n" +
-			"created_at   DateTime DEFAULT now(),\n" +
-			"id           UInt32,\n" +
-			"tag1 Nullable(Int32),\n" +
-			"tag2 Nullable(Int64),\n" +
-			"tag3 Nullable(Float32),\n" +
-			"tag4 Nullable(Float64)" +
-			") ENGINE = MergeTree(created_date, (id), 8192)"},
+	}{
+		{
+			inTagNames: []string{"tag1"},
+			inTagTypes: []string{"string"},
+			out: "CREATE TABLE tags(\n" +
+				"created_date Date     DEFAULT today(),\n" +
+				"created_at   DateTime DEFAULT now(),\n" +
+				"id           UInt32,\n" +
+				"tag1 Nullable(String)" +
+				") ENGINE = MergeTree()\n" +
+				"PARTITION BY created_date\n" +
+				"ORDER BY (id)\n" +
+				"SETTINGS index_granularity = 8192",
+		},
+		{
+			inTagNames: []string{"tag1", "tag2", "tag3", "tag4"},
+			inTagTypes: []string{"int32", "int64", "float32", "float64"},
+			out: "CREATE TABLE tags(\n" +
+				"created_date Date     DEFAULT today(),\n" +
+				"created_at   DateTime DEFAULT now(),\n" +
+				"id           UInt32,\n" +
+				"tag1 Nullable(Int32),\n" +
+				"tag2 Nullable(Int64),\n" +
+				"tag3 Nullable(Float32),\n" +
+				"tag4 Nullable(Float64)" +
+				") ENGINE = MergeTree()\n" +
+				"PARTITION BY created_date\n" +
+				"ORDER BY (id)\n" +
+				"SETTINGS index_granularity = 8192",
+		},
 	}
 	for _, tc := range testCases {
 		t.Run(fmt.Sprintf("tags table for %v", tc.inTagNames), func(t *testing.T) {

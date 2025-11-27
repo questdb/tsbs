@@ -2,8 +2,9 @@ package victoriametrics
 
 import (
 	"bytes"
-	"github.com/timescale/tsbs/pkg/data"
 	"log"
+
+	"github.com/questdb/tsbs/pkg/data"
 )
 
 const errNotThreeTuplesFmt = "parse error: line does not have 3 tuples, has %d"

@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/timescale/tsbs/pkg/data"
-	"github.com/timescale/tsbs/pkg/data/usecases/common"
-	"github.com/timescale/tsbs/pkg/targets"
+	"github.com/questdb/tsbs/pkg/data"
+	"github.com/questdb/tsbs/pkg/data/usecases/common"
+	"github.com/questdb/tsbs/pkg/targets"
 )
 
 type row = []interface{}
@@ -60,7 +60,8 @@ type fileDataSource struct {
 // source.DataSource interface implementation
 //
 // Decodes a data point of a following format:
-//       <measurement_type>\t<tags>\t<timestamp>\t<metric1>\t...\t<metricN>
+//
+//	<measurement_type>\t<tags>\t<timestamp>\t<metric1>\t...\t<metricN>
 //
 // Converts metric values to double-precision floating-point number, timestamp
 // to time.Time and tags to bytes array.

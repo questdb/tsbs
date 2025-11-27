@@ -124,8 +124,8 @@ scripts). The easiest way to get and install the Go programs is to use
 `go get` and then `make all` to install all binaries:
 ```bash
 # Fetch TSBS and its dependencies
-$ go get github.com/timescale/tsbs
-$ cd $GOPATH/src/github.com/timescale/tsbs
+$ go get github.com/questdb/tsbs
+$ cd $GOPATH/src/github.com/questdb/tsbs
 $ make
 ```
 
@@ -413,12 +413,12 @@ the results.
 ### Devops / cpu-only
 |Query type|Description|
 |:---|:---|
-|single-groupby-1-1-1| Simple aggregrate (MAX) on one metric for 1 host, every 5 mins for 1 hour
-|single-groupby-1-1-12| Simple aggregrate (MAX) on one metric for 1 host, every 5 mins for 12 hours
-|single-groupby-1-8-1| Simple aggregrate (MAX) on one metric for 8 hosts, every 5 mins for 1 hour
-|single-groupby-5-1-1| Simple aggregrate (MAX) on 5 metrics for 1 host, every 5 mins for 1 hour
-|single-groupby-5-1-12| Simple aggregrate (MAX) on 5 metrics for 1 host, every 5 mins for 12 hours
-|single-groupby-5-8-1| Simple aggregrate (MAX) on 5 metrics for 8 hosts, every 5 mins for 1 hour
+|single-groupby-1-1-1| Simple aggregate (MAX) on one metric for 1 host, every 5 mins for 1 hour
+|single-groupby-1-1-12| Simple aggregate (MAX) on one metric for 1 host, every 5 mins for 12 hours
+|single-groupby-1-8-1| Simple aggregate (MAX) on one metric for 8 hosts, every 5 mins for 1 hour
+|single-groupby-5-1-1| Simple aggregate (MAX) on 5 metrics for 1 host, every 5 mins for 1 hour
+|single-groupby-5-1-12| Simple aggregate (MAX) on 5 metrics for 1 host, every 5 mins for 12 hours
+|single-groupby-5-8-1| Simple aggregate (MAX) on 5 metrics for 8 hosts, every 5 mins for 1 hour
 |cpu-max-all-1| Aggregate across all CPU metrics per hour over 1 hour for a single host
 |cpu-max-all-8| Aggregate across all CPU metrics per hour over 1 hour for eight hosts
 |double-groupby-1| Aggregate on across both time and host, giving the average of 1 CPU metric per host per hour for 24 hours
@@ -450,11 +450,6 @@ the results.
 We welcome contributions from the community to make TSBS better!
 
 You can help either by opening an
-[issue](https://github.com/timescale/tsbs/issues) with
+[issue](https://github.com/questdb/tsbs/issues) with
 any suggestions or bug reports, or by forking this repository,
 making your own contribution, and submitting a pull request.
-
-Before we accept any contributions, Timescale contributors need to
-sign the [Contributor License Agreement](https://cla-assistant.io/timescale/tsbs) (CLA).
-By signing a CLA, we can ensure that the community is free and confident in its
-ability to use your contributions.
