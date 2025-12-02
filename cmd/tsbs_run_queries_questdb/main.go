@@ -25,8 +25,8 @@ var (
 	restURL  string
 	username string
 	password string
-	// PostgreSQL mode options
-	usePgx   bool
+	// PostgreSQL mode options (default)
+	useHTTP  bool
 	pgHost   string
 	pgPort   string
 	pgUser   string
@@ -44,18 +44,18 @@ func init() {
 	var config query.BenchmarkRunnerConfig
 	config.AddToFlagSet(pflag.CommandLine)
 
-	// HTTP options
-	pflag.String("url", "http://localhost:9000/", "Server URL for HTTP mode")
-	pflag.String("username", "", "Basic auth username (HTTP mode)")
-	pflag.String("password", "", "Basic auth password (HTTP mode)")
-
-	// PostgreSQL/pgx options
-	pflag.Bool("use-pgx", false, "Use PostgreSQL wire protocol (pgx v5) instead of HTTP")
+	// PostgreSQL/pgx options (default mode)
 	pflag.String("pg-host", "localhost", "PostgreSQL host")
 	pflag.String("pg-port", "8812", "PostgreSQL port")
 	pflag.String("pg-user", "admin", "PostgreSQL user")
 	pflag.String("pg-pass", "quest", "PostgreSQL password")
 	pflag.String("pg-db", "qdb", "PostgreSQL database name")
+
+	// HTTP options (legacy mode)
+	pflag.Bool("use-http", false, "Use HTTP REST API instead of PostgreSQL wire protocol")
+	pflag.String("url", "http://localhost:9000/", "Server URL for HTTP mode")
+	pflag.String("username", "", "Basic auth username (HTTP mode)")
+	pflag.String("password", "", "Basic auth password (HTTP mode)")
 
 	pflag.Parse()
 
@@ -69,16 +69,16 @@ func init() {
 		panic(fmt.Errorf("unable to decode config: %s", err))
 	}
 
-	restURL = viper.GetString("url")
-	username = viper.GetString("username")
-	password = viper.GetString("password")
-
-	usePgx = viper.GetBool("use-pgx")
 	pgHost = viper.GetString("pg-host")
 	pgPort = viper.GetString("pg-port")
 	pgUser = viper.GetString("pg-user")
 	pgPass = viper.GetString("pg-pass")
 	pgDBName = viper.GetString("pg-db")
+
+	useHTTP = viper.GetBool("use-http")
+	restURL = viper.GetString("url")
+	username = viper.GetString("username")
+	password = viper.GetString("password")
 
 	runner = query.NewBenchmarkRunner(config)
 }
@@ -109,17 +109,7 @@ type processor struct {
 func newProcessor() query.Processor { return &processor{} }
 
 func (p *processor) Init(workerNumber int) {
-	if usePgx {
-		connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
-			pgHost, pgPort, pgUser, pgPass, pgDBName)
-		p.ctx = context.Background()
-		conn, err := pgx.Connect(p.ctx, connStr)
-		if err != nil {
-			panic(fmt.Sprintf("Unable to connect to QuestDB via pgx v5: %v", err))
-		}
-		p.conn = conn
-		p.localPreparedStmts = make(map[string]struct{})
-	} else {
+	if useHTTP {
 		p.httpOpts = &HTTPClientDoOptions{
 			Username:             username,
 			Password:             password,
@@ -127,6 +117,16 @@ func (p *processor) Init(workerNumber int) {
 			PrettyPrintResponses: runner.DoPrintResponses(),
 		}
 		p.httpClient = NewHTTPClient(restURL)
+	} else {
+		connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+			pgHost, pgPort, pgUser, pgPass, pgDBName)
+		p.ctx = context.Background()
+		conn, err := pgx.Connect(p.ctx, connStr)
+		if err != nil {
+			panic(fmt.Sprintf("Unable to connect to QuestDB via pgx: %v", err))
+		}
+		p.conn = conn
+		p.localPreparedStmts = make(map[string]struct{})
 	}
 }
 
@@ -136,10 +136,10 @@ func (p *processor) ProcessQuery(q query.Query, _ bool) ([]*query.Stat, error) {
 	var lag float64
 	var err error
 
-	if usePgx {
-		lag, err = p.processQueryPgx(hq)
-	} else {
+	if useHTTP {
 		lag, err = p.httpClient.Do(hq, p.httpOpts)
+	} else {
+		lag, err = p.processQueryPgx(hq)
 	}
 
 	if err != nil {
