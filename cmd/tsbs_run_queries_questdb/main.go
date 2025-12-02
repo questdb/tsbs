@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/blagojts/viper"
@@ -87,23 +86,13 @@ func main() {
 	runner.Run(&query.HTTPPool, newProcessor)
 }
 
-// preparedStmtCache caches prepared statements by SQL template
-var (
-	preparedStmtCache     = make(map[string]string) // sqlTemplate -> stmtName
-	preparedStmtCacheMu   sync.RWMutex
-	preparedStmtCounter   int
-	preparedStmtCounterMu sync.Mutex
-)
-
 type processor struct {
 	// HTTP mode
 	httpClient *HTTPClient
 	httpOpts   *HTTPClientDoOptions
-	// pgx v5 mode - native connection (not database/sql)
+	// pgx mode
 	conn *pgx.Conn
 	ctx  context.Context
-	// Local cache of prepared statement names for this connection
-	localPreparedStmts map[string]struct{}
 }
 
 func newProcessor() query.Processor { return &processor{} }
@@ -126,7 +115,6 @@ func (p *processor) Init(workerNumber int) {
 			panic(fmt.Sprintf("Unable to connect to QuestDB via pgx: %v", err))
 		}
 		p.conn = conn
-		p.localPreparedStmts = make(map[string]struct{})
 	}
 }
 
