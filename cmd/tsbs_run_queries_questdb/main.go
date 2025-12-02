@@ -6,9 +6,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/blagojts/viper"
@@ -85,6 +87,14 @@ func main() {
 	runner.Run(&query.HTTPPool, newProcessor)
 }
 
+// preparedStmtCache caches prepared statements by SQL template
+var (
+	preparedStmtCache     = make(map[string]string) // sqlTemplate -> stmtName
+	preparedStmtCacheMu   sync.RWMutex
+	preparedStmtCounter   int
+	preparedStmtCounterMu sync.Mutex
+)
+
 type processor struct {
 	// HTTP mode
 	httpClient *HTTPClient
@@ -92,6 +102,8 @@ type processor struct {
 	// pgx v5 mode - native connection (not database/sql)
 	conn *pgx.Conn
 	ctx  context.Context
+	// Local cache of prepared statement names for this connection
+	localPreparedStmts map[string]struct{}
 }
 
 func newProcessor() query.Processor { return &processor{} }
@@ -106,6 +118,7 @@ func (p *processor) Init(workerNumber int) {
 			panic(fmt.Sprintf("Unable to connect to QuestDB via pgx v5: %v", err))
 		}
 		p.conn = conn
+		p.localPreparedStmts = make(map[string]struct{})
 	} else {
 		p.httpOpts = &HTTPClientDoOptions{
 			Username:             username,
@@ -138,8 +151,14 @@ func (p *processor) ProcessQuery(q query.Query, _ bool) ([]*query.Stat, error) {
 }
 
 // processQueryPgx extracts SQL from HTTP query and runs it via native pgx v5
+// Supports parameterized queries with bind variables for better performance
 func (p *processor) processQueryPgx(hq *query.HTTP) (float64, error) {
-	// Extract SQL from HTTP path: /exec?count=false&query=SELECT...
+	// Check if query has parameters in Body (new parameterized format)
+	if len(hq.Body) > 0 && len(hq.RawQuery) > 0 {
+		return p.processQueryPgxWithParams(hq)
+	}
+
+	// Fall back to legacy non-parameterized path extraction
 	pathStr := string(hq.Path)
 
 	// Parse URL to extract query parameter
@@ -178,4 +197,68 @@ func (p *processor) processQueryPgx(hq *query.HTTP) (float64, error) {
 	}
 
 	return 0, fmt.Errorf("invalid path format: %s", pathStr)
+}
+
+// processQueryPgxWithParams executes parameterized query with bind variables
+// Arrays are inlined since QuestDB doesn't support array bind params for IN clause
+func (p *processor) processQueryPgxWithParams(hq *query.HTTP) (float64, error) {
+	sqlTemplate := string(hq.RawQuery)
+
+	// Parse parameters from JSON in Body
+	var rawParams []interface{}
+	if err := json.Unmarshal(hq.Body, &rawParams); err != nil {
+		return 0, fmt.Errorf("failed to parse query params JSON: %v", err)
+	}
+
+	// First pass: inline arrays and track which original indices are kept
+	var params []interface{}
+	inlinedIndices := make(map[int]bool)
+	for i, raw := range rawParams {
+		switch v := raw.(type) {
+		case []interface{}:
+			// Inline array values in SQL (QuestDB doesn't support array bind params)
+			placeholder := fmt.Sprintf("$%d", i+1)
+			var quoted []string
+			for _, item := range v {
+				quoted = append(quoted, fmt.Sprintf("'%v'", item))
+			}
+			inlineList := "(" + strings.Join(quoted, ",") + ")"
+			sqlTemplate = strings.Replace(sqlTemplate, placeholder, inlineList, 1)
+			inlinedIndices[i+1] = true
+		default:
+			params = append(params, v)
+		}
+	}
+
+	// Second pass: renumber remaining placeholders
+	// Build mapping from old index to new index
+	newIdx := 1
+	for origIdx := 1; origIdx <= len(rawParams); origIdx++ {
+		if !inlinedIndices[origIdx] {
+			if origIdx != newIdx {
+				sqlTemplate = strings.ReplaceAll(sqlTemplate, fmt.Sprintf("$%d", origIdx), fmt.Sprintf("$%d", newIdx))
+			}
+			newIdx++
+		}
+	}
+
+	start := time.Now()
+
+	// Use Query with prepared statement-style execution
+	rows, err := p.conn.Query(p.ctx, sqlTemplate, params...)
+	if err != nil {
+		return 0, fmt.Errorf("parameterized query failed: %v (sql: %s)", err, sqlTemplate)
+	}
+
+	// Fetch all rows
+	for rows.Next() {
+	}
+	rows.Close()
+
+	if err := rows.Err(); err != nil {
+		return 0, fmt.Errorf("row iteration error: %v", err)
+	}
+
+	lag := float64(time.Since(start).Nanoseconds()) / 1e6 // milliseconds
+	return lag, nil
 }
