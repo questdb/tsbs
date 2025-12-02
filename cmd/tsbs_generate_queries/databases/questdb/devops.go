@@ -49,24 +49,26 @@ func (d *Devops) MaxAllCPU(qi query.Query, nHosts int, duration time.Duration) {
 	hosts, err := d.GetRandomHosts(nHosts)
 	panicIfErr(err)
 
-	sql := fmt.Sprintf(`
+	// Parameterized SQL for prepared statements
+	sqlTemplate := fmt.Sprintf(`
 		SELECT
-			date_trunc('hour', timestamp) AS hour,
 			%s
 		FROM cpu
-		WHERE hostname IN ('%s')
-		  AND timestamp >= '%s'
-		  AND timestamp < '%s'
-		GROUP BY hour
-		ORDER BY hour`,
-		strings.Join(selectClauses, ", "),
-		strings.Join(hosts, "', '"),
+		WHERE hostname IN $1
+		  AND timestamp >= $2
+		  AND timestamp < $3
+		SAMPLE BY 1h`,
+		strings.Join(selectClauses, ", "))
+
+	params := []interface{}{
+		hosts,
 		interval.StartString(),
-		interval.EndString())
+		interval.EndString(),
+	}
 
 	humanLabel := devops.GetMaxAllLabel("QuestDB", nHosts)
 	humanDesc := fmt.Sprintf("%s: %s", humanLabel, interval.StartString())
-	d.fillInQuery(qi, humanLabel, humanDesc, sql)
+	d.fillInQueryWithParams(qi, humanLabel, humanDesc, sqlTemplate, params)
 }
 
 // GroupByTimeAndPrimaryTag selects the AVG of metrics in the group `cpu` per device
@@ -82,21 +84,24 @@ func (d *Devops) GroupByTimeAndPrimaryTag(qi query.Query, numMetrics int) {
 	interval := d.Interval.MustRandWindow(devops.DoubleGroupByDuration)
 	selectClauses := d.getSelectAggClauses("avg", metrics)
 
-	sql := fmt.Sprintf(`
-		SELECT date_trunc('hour', timestamp) as timestamp, hostname,
+	// Parameterized SQL for prepared statements
+	sqlTemplate := fmt.Sprintf(`
+		SELECT hostname,
 			%s
 		FROM cpu
-		WHERE timestamp >= '%s'
-		  AND timestamp < '%s'
-		GROUP BY timestamp, hostname
-		ORDER BY timestamp, hostname`,
-		strings.Join(selectClauses, ", "),
+		WHERE timestamp >= $1
+		  AND timestamp < $2
+		SAMPLE BY 1h`,
+		strings.Join(selectClauses, ", "))
+
+	params := []interface{}{
 		interval.StartString(),
-		interval.EndString())
+		interval.EndString(),
+	}
 
 	humanLabel := devops.GetDoubleGroupByLabel("QuestDB", numMetrics)
 	humanDesc := fmt.Sprintf("%s: %s", humanLabel, interval.StartString())
-	d.fillInQuery(qi, humanLabel, humanDesc, sql)
+	d.fillInQueryWithParams(qi, humanLabel, humanDesc, sqlTemplate, params)
 }
 
 // GroupByOrderByLimit populates a query.Query that has a time WHERE clause,
@@ -106,19 +111,23 @@ func (d *Devops) GroupByTimeAndPrimaryTag(qi query.Query, numMetrics int) {
 // groupby-orderby-limit
 func (d *Devops) GroupByOrderByLimit(qi query.Query) {
 	interval := d.Interval.MustRandWindow(time.Hour)
-	sql := fmt.Sprintf(`
-		SELECT date_trunc('minute', timestamp) AS minute,
-			max(usage_user)
+
+	// Parameterized SQL for prepared statements
+	sqlTemplate := `
+		SELECT max(usage_user)
 		FROM cpu
-		WHERE timestamp < '%s'
-		GROUP BY minute
-		ORDER BY minute DESC
-		LIMIT 5`,
-		interval.EndString())
+		WHERE timestamp < $1
+		SAMPLE BY 1m
+		ORDER BY timestamp DESC
+		LIMIT 5`
+
+	params := []interface{}{
+		interval.EndString(),
+	}
 
 	humanLabel := "QuestDB max cpu over last 5 min-intervals (random end)"
 	humanDesc := fmt.Sprintf("%s: %s", humanLabel, interval.EndString())
-	d.fillInQuery(qi, humanLabel, humanDesc, sql)
+	d.fillInQueryWithParams(qi, humanLabel, humanDesc, sqlTemplate, params)
 }
 
 // LastPointPerHost finds the last row for every host in the dataset
@@ -142,36 +151,45 @@ func (d *Devops) LastPointPerHost(qi query.Query) {
 // high-cpu-all
 func (d *Devops) HighCPUForHosts(qi query.Query, nHosts int) {
 	interval := d.Interval.MustRandWindow(devops.HighCPUDuration)
-	sql := ""
+
+	var sqlTemplate string
+	var params []interface{}
+
 	if nHosts > 0 {
 		hosts, err := d.GetRandomHosts(nHosts)
 		panicIfErr(err)
 
-		sql = fmt.Sprintf(`
+		// Parameterized SQL for prepared statements
+		sqlTemplate = `
 		      SELECT *
 		      FROM cpu
 		      WHERE usage_user > 90.0
-		       AND hostname IN ('%s')
-		       AND timestamp >= '%s'
-		       AND timestamp < '%s'`,
-			strings.Join(hosts, "', '"),
+		       AND hostname IN $1
+		       AND timestamp >= $2
+		       AND timestamp < $3`
+		params = []interface{}{
+			hosts,
 			interval.StartString(),
-			interval.EndString())
+			interval.EndString(),
+		}
 	} else {
-		sql = fmt.Sprintf(`
+		// Parameterized SQL for prepared statements (no hostname filter)
+		sqlTemplate = `
 		      SELECT *
 		      FROM cpu
 		      WHERE usage_user > 90.0
-		       AND timestamp >= '%s'
-		       AND timestamp < '%s'`,
+		       AND timestamp >= $1
+		       AND timestamp < $2`
+		params = []interface{}{
 			interval.StartString(),
-			interval.EndString())
+			interval.EndString(),
+		}
 	}
 
 	humanLabel, err := devops.GetHighCPULabel("QuestDB", nHosts)
 	panicIfErr(err)
 	humanDesc := fmt.Sprintf("%s: %s", humanLabel, interval.StartString())
-	d.fillInQuery(qi, humanLabel, humanDesc, sql)
+	d.fillInQueryWithParams(qi, humanLabel, humanDesc, sqlTemplate, params)
 }
 
 // GroupByTime selects the MAX for metrics under 'cpu', per minute for N random
@@ -192,23 +210,26 @@ func (d *Devops) GroupByTime(qi query.Query, nHosts, numMetrics int, timeRange t
 	hosts, err := d.GetRandomHosts(nHosts)
 	panicIfErr(err)
 
-	sql := fmt.Sprintf(`
-		SELECT date_trunc('minute', timestamp) as minute,
+	// Parameterized SQL for prepared statements
+	sqlTemplate := fmt.Sprintf(`
+		SELECT
 			%s
 		FROM cpu
-		WHERE hostname IN ('%s')
-		  AND timestamp >= '%s'
-		  AND timestamp < '%s'
-		GROUP BY minute
-		ORDER BY minute`,
-		strings.Join(selectClauses, ", "),
-		strings.Join(hosts, "', '"),
+		WHERE hostname IN $1
+		  AND timestamp >= $2
+		  AND timestamp < $3
+		SAMPLE BY 1m`,
+		strings.Join(selectClauses, ", "))
+
+	params := []interface{}{
+		hosts,
 		interval.StartString(),
-		interval.EndString())
+		interval.EndString(),
+	}
 
 	humanLabel := fmt.Sprintf(
 		"QuestDB %d cpu metric(s), random %4d hosts, random %s by 1m",
 		numMetrics, nHosts, timeRange)
 	humanDesc := fmt.Sprintf("%s: %s", humanLabel, interval.StartString())
-	d.fillInQuery(qi, humanLabel, humanDesc, sql)
+	d.fillInQueryWithParams(qi, humanLabel, humanDesc, sqlTemplate, params)
 }

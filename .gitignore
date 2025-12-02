@@ -8,3 +8,6 @@
 
 # High Dynamic Range (HDR) Histogram files
 *.hdr
+
+# Compiled binaries
+tsbs_*

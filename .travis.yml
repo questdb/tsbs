@@ -3,16 +3,9 @@ dist: focal
 jobs:
   include:
     - stage: test
-      name: "Go 1.14"
+      name: "Go 1.23"
       go:
-        - 1.14.x
+        - 1.23.x
       install: skip
       script:
-        - GO111MODULE=on go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
-    - stage: test
-      name: "Go 1.15"
-      go:
-        - 1.15.x
-      install: skip
-      script:
-        - GO111MODULE=on go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...
+        - go test -v -race -coverprofile=coverage.txt -covermode=atomic ./...

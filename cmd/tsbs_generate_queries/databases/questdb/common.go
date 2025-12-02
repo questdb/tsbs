@@ -1,8 +1,10 @@
 package questdb
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/uses/devops"
@@ -19,7 +21,7 @@ func (g *BaseGenerator) GenerateEmptyQuery() query.Query {
 	return query.NewHTTP()
 }
 
-// fillInQuery fills the query struct with data.
+// fillInQuery fills the query struct with data (legacy non-parameterized).
 func (g *BaseGenerator) fillInQuery(qi query.Query, humanLabel, humanDesc, sql string) {
 	v := url.Values{}
 	v.Set("count", "false")
@@ -31,6 +33,55 @@ func (g *BaseGenerator) fillInQuery(qi query.Query, humanLabel, humanDesc, sql s
 	q.Method = []byte("GET")
 	q.Path = []byte(fmt.Sprintf("/exec?%s", v.Encode()))
 	q.Body = nil
+}
+
+// fillInQueryWithParams fills the query struct with parameterized SQL and bind values.
+// sqlTemplate uses $1, $2, etc. placeholders for PostgreSQL prepared statements.
+// params contains the values to bind at runtime.
+func (g *BaseGenerator) fillInQueryWithParams(qi query.Query, humanLabel, humanDesc, sqlTemplate string, params []interface{}) {
+	q := qi.(*query.HTTP)
+	q.HumanLabel = []byte(humanLabel)
+	q.HumanDescription = []byte(humanDesc)
+	q.Method = []byte("GET")
+
+	// Store parameterized SQL in RawQuery
+	q.RawQuery = []byte(sqlTemplate)
+
+	// Store parameters as JSON in Body for pgx mode
+	paramsJSON, _ := json.Marshal(params)
+	q.Body = paramsJSON
+
+	// For HTTP mode, we still need to generate the full SQL path
+	// Substitute parameters to create the HTTP URL
+	fullSQL := substituteParams(sqlTemplate, params)
+	v := url.Values{}
+	v.Set("count", "false")
+	v.Set("query", fullSQL)
+	q.Path = []byte(fmt.Sprintf("/exec?%s", v.Encode()))
+}
+
+// substituteParams replaces $1, $2, etc. with actual values for HTTP mode
+func substituteParams(sql string, params []interface{}) string {
+	result := sql
+	for i, param := range params {
+		placeholder := fmt.Sprintf("$%d", i+1)
+		var replacement string
+		switch v := param.(type) {
+		case string:
+			replacement = fmt.Sprintf("'%s'", v)
+		case []string:
+			// Handle string arrays for hostname IN clauses
+			quoted := make([]string, len(v))
+			for j, s := range v {
+				quoted[j] = fmt.Sprintf("'%s'", s)
+			}
+			replacement = fmt.Sprintf("(%s)", strings.Join(quoted, ", "))
+		default:
+			replacement = fmt.Sprintf("%v", v)
+		}
+		result = strings.Replace(result, placeholder, replacement, 1)
+	}
+	return result
 }
 
 // NewDevops creates a new devops use case query generator.
