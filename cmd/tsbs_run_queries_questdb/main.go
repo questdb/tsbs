@@ -138,6 +138,12 @@ func (p *processor) ProcessQuery(q query.Query, _ bool) ([]*query.Stat, error) {
 	return []*query.Stat{stat}, nil
 }
 
+func (p *processor) Close() {
+	if p.conn != nil {
+		p.conn.Close(p.ctx)
+	}
+}
+
 // processQueryPgx extracts SQL from HTTP query and runs it via native pgx v5
 // Supports parameterized queries with bind variables for better performance
 func (p *processor) processQueryPgx(hq *query.HTTP) (float64, error) {

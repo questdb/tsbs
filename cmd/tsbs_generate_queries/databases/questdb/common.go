@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/questdb/tsbs/cmd/tsbs_generate_queries/uses/devops"
@@ -74,31 +75,11 @@ func substituteParams(sql string, params []interface{}) string {
 			for j, s := range v {
 				quoted[j] = fmt.Sprintf("'%s'", s)
 			}
-			replacement = fmt.Sprintf("(%s)", joinStrings(quoted, ", "))
+			replacement = fmt.Sprintf("(%s)", strings.Join(quoted, ", "))
 		default:
 			replacement = fmt.Sprintf("%v", v)
 		}
-		result = replaceFirst(result, placeholder, replacement)
-	}
-	return result
-}
-
-func replaceFirst(s, old, new string) string {
-	for i := 0; i <= len(s)-len(old); i++ {
-		if s[i:i+len(old)] == old {
-			return s[:i] + new + s[i+len(old):]
-		}
-	}
-	return s
-}
-
-func joinStrings(strs []string, sep string) string {
-	if len(strs) == 0 {
-		return ""
-	}
-	result := strs[0]
-	for i := 1; i < len(strs); i++ {
-		result += sep + strs[i]
+		result = strings.Replace(result, placeholder, replacement, 1)
 	}
 	return result
 }
