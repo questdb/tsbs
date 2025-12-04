@@ -28,7 +28,7 @@ func (p *processor) Init(numWorker int, _, _ bool) {
 		Host:      daemonURL,
 		Database:  loader.DatabaseName(),
 	}
-	w := NewHTTPWriter(cfg, consistency)
+	w := NewHTTPWriter(cfg, consistency, noSync)
 	p.initWithHTTPWriter(numWorker, w)
 }
 

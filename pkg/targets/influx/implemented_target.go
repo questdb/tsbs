@@ -26,6 +26,7 @@ func (t *influxTarget) TargetSpecificFlags(flagPrefix string, flagSet *pflag.Fla
 	flagSet.String(flagPrefix+"organization", "", "Organization name (InfluxDB v2).")
 	flagSet.Duration(flagPrefix+"backoff", time.Second, "Time to sleep between requests when server indicates backpressure is needed.")
 	flagSet.Bool(flagPrefix+"gzip", true, "Whether to gzip encode requests (default true).")
+	flagSet.Bool(flagPrefix+"no-sync", false, "Skip fsync after write (InfluxDB v3). Faster but less durable.")
 }
 
 func (t *influxTarget) TargetName() string {
