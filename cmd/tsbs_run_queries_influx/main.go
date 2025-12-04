@@ -18,9 +18,10 @@ import (
 
 // Program option vars:
 var (
-	daemonUrls []string
-	chunkSize  uint64
-	authToken  string
+	daemonUrls    []string
+	chunkSize     uint64
+	authToken     string
+	influxVersion string // "v1", "v2", or "v3"
 )
 
 // Global vars:
@@ -37,6 +38,7 @@ func init() {
 	pflag.String("urls", "http://localhost:8086", "Daemon URLs, comma-separated. Will be used in a round-robin fashion.")
 	pflag.Uint64("chunk-response-size", 0, "Number of series to chunk results into. 0 means no chunking.")
 	pflag.String("auth-token", "", "Use the Authorization header with the Token scheme to provide your token to InfluxDB. If empty will not send the Authorization header.")
+	pflag.String("influx-version", "v1", "InfluxDB version: v1, v2, or v3. Determines which API endpoint to use.")
 
 	pflag.Parse()
 
@@ -53,6 +55,11 @@ func init() {
 	csvDaemonUrls = viper.GetString("urls")
 	authToken = viper.GetString("auth-token")
 	chunkSize = viper.GetUint64("chunk-response-size")
+	influxVersion = viper.GetString("influx-version")
+	if influxVersion != "v1" && influxVersion != "v2" && influxVersion != "v3" {
+		log.Fatalf("Invalid influx-version '%s'. Must be v1, v2, or v3.", influxVersion)
+	}
+	log.Printf("Using InfluxDB %s API", influxVersion)
 	if authToken != "" {
 		log.Println("Using Authorization header in benchmark")
 	} else {
@@ -71,8 +78,9 @@ func main() {
 }
 
 type processor struct {
-	w    *HTTPClient
-	opts *HTTPClientDoOptions
+	httpClient   *HTTPClient
+	flightClient *FlightClient
+	opts         *HTTPClientDoOptions
 }
 
 func newProcessor() query.Processor { return &processor{} }
@@ -83,14 +91,34 @@ func (p *processor) Init(workerNumber int) {
 		PrettyPrintResponses: runner.DoPrintResponses(),
 		chunkSize:            chunkSize,
 		database:             runner.DatabaseName(),
+		influxVersion:        influxVersion,
 	}
 	url := daemonUrls[workerNumber%len(daemonUrls)]
-	p.w = NewHTTPClient(url, authToken)
+
+	if influxVersion == "v3" {
+		// Use Flight client for v3
+		var err error
+		p.flightClient, err = NewFlightClient(url, runner.DatabaseName(), authToken)
+		if err != nil {
+			log.Fatalf("Failed to create Flight client: %v", err)
+		}
+	} else {
+		// Use HTTP client for v1/v2
+		p.httpClient = NewHTTPClient(url, authToken)
+	}
 }
 
 func (p *processor) ProcessQuery(q query.Query, _ bool) ([]*query.Stat, error) {
 	hq := q.(*query.HTTP)
-	lag, err := p.w.Do(hq, p.opts)
+	var lag float64
+	var err error
+
+	if influxVersion == "v3" {
+		lag, err = p.flightClient.Do(hq, p.opts)
+	} else {
+		lag, err = p.httpClient.Do(hq, p.opts)
+	}
+
 	if err != nil {
 		return nil, err
 	}
