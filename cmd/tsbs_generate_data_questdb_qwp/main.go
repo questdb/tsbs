@@ -35,6 +35,9 @@ func main() {
 		"QWP auto-flush byte threshold; batches fire once the buffer exceeds this size")
 	pflag.Int("max-buffer-size", 0,
 		"Hard cap on the sender buffer in bytes (0 = unlimited)")
+	pflag.Int("parallel", 1,
+		"Number of output files. When >1, --file is a prefix and outputs are {file}.0..{file}.N-1; "+
+			"file k gets every timestamp shifted by k ms so all files carry distinct rows.")
 	pflag.Parse()
 
 	if err := utils.SetupConfigFile(); err != nil {
@@ -58,12 +61,16 @@ func main() {
 		log.Fatalf("--flush-bytes must be positive, got %d", flushBytes)
 	}
 	maxBufSize := viper.GetInt("max-buffer-size")
+	parallel := viper.GetInt("parallel")
+	if parallel < 1 {
+		log.Fatalf("--parallel must be >= 1, got %d", parallel)
+	}
 
-	out, closeOut, err := openOutput(config.File)
+	outs, closeOuts, err := openOutputs(config.File, parallel)
 	if err != nil {
 		log.Fatalf("open output: %v", err)
 	}
-	defer closeOut()
+	defer closeOuts()
 
 	rand.Seed(config.Seed)
 	scfg, err := usecases.GetSimulatorConfig(config)
@@ -73,58 +80,101 @@ func main() {
 	sim := scfg.NewSimulator(config.LogInterval, config.Limit)
 
 	ctx := context.Background()
-	dumpSink := &postHandshakeWriter{inner: out}
-	opts := []qdb.LineSenderOption{
-		qdb.WithQwp(),
-		qdb.WithQwpDumpWriter(dumpSink),
-		qdb.WithAutoFlushBytes(flushBytes),
-		qdb.WithAutoFlushRows(0),
-		qdb.WithAutoFlushInterval(0),
-		qdb.WithInFlightWindow(1),
+	senders := make([]qdb.LineSender, parallel)
+	closeAll := func() {
+		for _, s := range senders {
+			if s != nil {
+				_ = s.Close(ctx)
+			}
+		}
 	}
-	if maxBufSize > 0 {
-		opts = append(opts, qdb.WithMaxBufferSize(maxBufSize))
-	}
-	sender, err := qdb.NewLineSender(ctx, opts...)
-	if err != nil {
-		log.Fatalf("create sender: %v", err)
+	for i := 0; i < parallel; i++ {
+		dumpSink := &postHandshakeWriter{inner: outs[i]}
+		opts := []qdb.LineSenderOption{
+			qdb.WithQwp(),
+			qdb.WithQwpDumpWriter(dumpSink),
+			qdb.WithAutoFlushBytes(flushBytes),
+			qdb.WithAutoFlushRows(0),
+			qdb.WithAutoFlushInterval(0),
+			qdb.WithInFlightWindow(1),
+		}
+		if maxBufSize > 0 {
+			opts = append(opts, qdb.WithMaxBufferSize(maxBufSize))
+		}
+		s, err := qdb.NewLineSender(ctx, opts...)
+		if err != nil {
+			closeAll()
+			log.Fatalf("create sender[%d]: %v", i, err)
+		}
+		senders[i] = s
 	}
 
 	started := time.Now()
-	rows, err := runSimulation(ctx, sender, sim)
+	rows, err := runSimulation(ctx, senders, sim)
 	if err != nil {
-		_ = sender.Close(ctx)
+		closeAll()
 		log.Fatalf("generate: %v", err)
 	}
-	if err := sender.Flush(ctx); err != nil {
-		_ = sender.Close(ctx)
-		log.Fatalf("final flush: %v", err)
+	for i, s := range senders {
+		if err := s.Flush(ctx); err != nil {
+			closeAll()
+			log.Fatalf("final flush[%d]: %v", i, err)
+		}
 	}
-	if err := sender.Close(ctx); err != nil {
-		log.Fatalf("close sender: %v", err)
+	for i, s := range senders {
+		if err := s.Close(ctx); err != nil {
+			log.Fatalf("close sender[%d]: %v", i, err)
+		}
 	}
-	fmt.Fprintf(os.Stderr, "wrote %d rows in %s\n", rows, time.Since(started).Round(time.Millisecond))
+	fmt.Fprintf(os.Stderr, "wrote %d rows × %d file(s) in %s\n",
+		rows, parallel, time.Since(started).Round(time.Millisecond))
 }
 
-func openOutput(path string) (io.Writer, func(), error) {
+func openOutputs(path string, parallel int) ([]io.Writer, func(), error) {
+	if parallel <= 1 {
+		if path == "" {
+			return []io.Writer{os.Stdout}, func() {}, nil
+		}
+		f, err := os.Create(path)
+		if err != nil {
+			return nil, nil, err
+		}
+		return []io.Writer{f}, func() { _ = f.Close() }, nil
+	}
 	if path == "" {
-		return os.Stdout, func() {}, nil
+		return nil, nil, fmt.Errorf("--file is required when --parallel > 1")
 	}
-	f, err := os.Create(path)
-	if err != nil {
-		return nil, nil, err
+	files := make([]*os.File, 0, parallel)
+	outs := make([]io.Writer, 0, parallel)
+	closer := func() {
+		for _, f := range files {
+			_ = f.Close()
+		}
 	}
-	return f, func() { _ = f.Close() }, nil
+	for i := 0; i < parallel; i++ {
+		name := fmt.Sprintf("%s.%d", path, i)
+		f, err := os.Create(name)
+		if err != nil {
+			closer()
+			return nil, nil, fmt.Errorf("create %s: %w", name, err)
+		}
+		files = append(files, f)
+		outs = append(outs, f)
+	}
+	return outs, closer, nil
 }
 
-func runSimulation(ctx context.Context, sender qdb.LineSender, sim common.Simulator) (uint64, error) {
+func runSimulation(ctx context.Context, senders []qdb.LineSender, sim common.Simulator) (uint64, error) {
 	point := data.NewPoint()
 	var rows uint64
 	for !sim.Finished() {
 		write := sim.Next(point)
 		if write {
-			if err := emitPoint(ctx, sender, point); err != nil {
-				return rows, err
+			for i, s := range senders {
+				offset := time.Duration(i) * time.Millisecond
+				if err := emitPoint(ctx, s, point, offset); err != nil {
+					return rows, err
+				}
 			}
 			rows++
 		}
@@ -137,7 +187,7 @@ func runSimulation(ctx context.Context, sender qdb.LineSender, sim common.Simula
 // strings are demoted to typed columns, matching the convention used by the
 // existing QuestDB ILP serializer (pkg/targets/questdb/serializer.go), so the
 // resulting QuestDB table schema is identical regardless of wire protocol.
-func emitPoint(ctx context.Context, s qdb.LineSender, p *data.Point) error {
+func emitPoint(ctx context.Context, s qdb.LineSender, p *data.Point, offset time.Duration) error {
 	s = s.Table(string(p.MeasurementName()))
 
 	tagKeys := p.TagKeys()
@@ -170,7 +220,7 @@ func emitPoint(ctx context.Context, s qdb.LineSender, p *data.Point) error {
 	if ts == nil {
 		return s.AtNow(ctx)
 	}
-	return s.At(ctx, *ts)
+	return s.At(ctx, ts.Add(offset))
 }
 
 func appendColumn(s qdb.LineSender, name string, v interface{}) error {
