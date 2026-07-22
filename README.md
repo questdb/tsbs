@@ -11,6 +11,9 @@ This fork derives from the original TSBS and includes a number of changes
 such as:
 * Loader optimizations for QuestDB making it capable of 4M+ rows/s
 ingestion.
+* QuestDB ingestion over the QuestDB Wire Protocol (QWP), a binary columnar
+protocol, alongside the original InfluxDB line protocol path. See the
+[QuestDB supplemental docs](docs/questdb.md).
 * A number of bugfixes in query generation.
 * InfluxDB v2 support based on
 [this PR](https://github.com/timescale/tsbs/pull/209). Original TSBS
@@ -151,8 +154,14 @@ Variables needed:
 1. an end time. E.g., `2016-01-04T00:00:00Z`
 1. how much time should be between each reading per device, in seconds. E.g., `10s`
 1. and which database(s) you want to generate for. E.g., `timescaledb`
- (choose from `cassandra`, `clickhouse`, `cratedb`, `influx`, `mongo`, `questdb`, `siridb`,
-  `timescaledb` or `victoriametrics`)
+ (choose from `cassandra`, `clickhouse`, `cratedb`, `influx`, `mongo`, `questdb`,
+  `questdb-qwp`, `siridb`, `timescaledb` or `victoriametrics`)
+
+_Note for QuestDB: use `questdb` to benchmark ingestion over InfluxDB line
+protocol, and `questdb-qwp` to benchmark ingestion over the QuestDB Wire
+Protocol. The latter writes the same points in a binary format the loader
+sends without parsing text, which is what a QWP benchmark should measure. See
+the [supplemental docs](docs/questdb.md)._
 
 Given the above steps you can now generate a dataset (or multiple
 datasets, if you chose to generate for multiple databases) that can
