@@ -31,19 +31,20 @@ const (
 
 // Program option vars:
 var (
-	protocol         string
-	questdbILPBindTo string
-	questdbQWPAddr   string
-	qwpConfString    string
-	qwpUser          string
-	qwpPassword      string
-	qwpToken         string
-	qwpSFDir         string
-	awaitAck         bool
-	nanoTimestamps   bool
-	useTLS           bool
-	authTokenId      string
-	authToken        string
+	protocol          string
+	questdbILPBindTo  string
+	questdbQWPAddr    string
+	qwpConfString     string
+	qwpUser           string
+	qwpPassword       string
+	qwpToken          string
+	qwpSFDir          string
+	awaitAck          bool
+	nanoTimestamps    bool
+	qwpCloseTimeoutMs uint
+	useTLS            bool
+	authTokenId       string
+	authToken         string
 )
 
 // Global vars
@@ -90,6 +91,7 @@ func init() {
 	pflag.CommandLine.String("qwp-sf-dir", "", "QWP store-and-forward directory. Empty means memory mode, which is what a throughput benchmark wants")
 	pflag.CommandLine.Bool("qwp-await-ack", false, "Wait for the server to acknowledge every batch before counting it. Slower, but every reported row is server-confirmed when counted")
 	pflag.CommandLine.Bool("qwp-nano-timestamps", false, "Send nanosecond designated timestamps over QWP. Off by default so that the table matches the one the ILP path creates, which is microsecond resolution")
+	pflag.CommandLine.Uint("qwp-close-timeout-ms", 60000, "How long Close waits for the server to acknowledge outstanding batches. Close is the loader's ack barrier, so this bounds the wait for the last batches of a run")
 	target.TargetSpecificFlags("", pflag.CommandLine)
 	pflag.Parse()
 
@@ -116,6 +118,7 @@ func init() {
 	qwpSFDir = viper.GetString("qwp-sf-dir")
 	awaitAck = viper.GetBool("qwp-await-ack")
 	nanoTimestamps = viper.GetBool("qwp-nano-timestamps")
+	qwpCloseTimeoutMs = viper.GetUint("qwp-close-timeout-ms")
 	useTLS = viper.GetBool("tls")
 	authTokenId = viper.GetString("auth-id")
 	authToken = viper.GetString("auth-token")
@@ -169,6 +172,12 @@ func qwpConf(numWorker int) string {
 	sb.WriteString("addr=")
 	sb.WriteString(questdbQWPAddr)
 	sb.WriteString(";auto_flush=off;")
+	// Close drains and waits for outstanding ACKs, and that wait is the
+	// loader's ack barrier: the client's 5s default is not enough for the
+	// last batches of a large run, and a timeout there means unacked rows.
+	sb.WriteString("close_flush_timeout_millis=")
+	sb.WriteString(strconv.FormatUint(uint64(qwpCloseTimeoutMs), 10))
+	sb.WriteString(";")
 	if useTLS {
 		// Same posture as the ILP path: the certificate is not checked.
 		sb.WriteString("tls_verify=unsafe_off;")

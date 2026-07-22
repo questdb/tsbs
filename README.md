@@ -12,7 +12,8 @@ such as:
 * Loader optimizations for QuestDB making it capable of 4M+ rows/s
 ingestion.
 * QuestDB ingestion over the QuestDB Wire Protocol (QWP), a binary columnar
-protocol, alongside the original InfluxDB line protocol path. See the
+protocol, alongside the original InfluxDB line protocol path, and query
+benchmarking over QWP, PostgreSQL wire or HTTP. See the
 [QuestDB supplemental docs](docs/questdb.md).
 * A number of bugfixes in query generation.
 * InfluxDB v2 support based on

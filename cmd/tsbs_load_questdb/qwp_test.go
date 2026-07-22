@@ -271,7 +271,7 @@ func TestQwpConf(t *testing.T) {
 			set: func() {
 				questdbQWPAddr = "127.0.0.1:9000"
 			},
-			want: "ws::addr=127.0.0.1:9000;auto_flush=off;",
+			want: "ws::addr=127.0.0.1:9000;auto_flush=off;close_flush_timeout_millis=60000;",
 		},
 		{
 			desc: "tls with basic auth",
@@ -281,7 +281,7 @@ func TestQwpConf(t *testing.T) {
 				qwpUser = "admin"
 				qwpPassword = "quest"
 			},
-			want: "wss::addr=host:9000;auto_flush=off;tls_verify=unsafe_off;username=admin;password=quest;",
+			want: "wss::addr=host:9000;auto_flush=off;close_flush_timeout_millis=60000;tls_verify=unsafe_off;username=admin;password=quest;",
 		},
 		{
 			desc: "store and forward",
@@ -289,7 +289,7 @@ func TestQwpConf(t *testing.T) {
 				questdbQWPAddr = "a:9000,b:9000"
 				qwpSFDir = "/tmp/sf"
 			},
-			want: "ws::addr=a:9000,b:9000;auto_flush=off;sf_dir=/tmp/sf;sender_id=tsbs-3;",
+			want: "ws::addr=a:9000,b:9000;auto_flush=off;close_flush_timeout_millis=60000;sf_dir=/tmp/sf;sender_id=tsbs-3;",
 		},
 		{
 			desc: "explicit conf string wins",
@@ -305,6 +305,7 @@ func TestQwpConf(t *testing.T) {
 		t.Run(c.desc, func(t *testing.T) {
 			qwpConfString, questdbQWPAddr, qwpUser, qwpPassword, qwpToken, qwpSFDir = "", "", "", "", "", ""
 			useTLS = false
+			qwpCloseTimeoutMs = 60000
 			c.set()
 			if got := qwpConf(3); got != c.want {
 				t.Errorf("got  %q\nwant %q", got, c.want)

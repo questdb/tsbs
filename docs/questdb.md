@@ -91,6 +91,52 @@ go get github.com/questdb/go-questdb-client/v4@main
 go mod tidy
 ```
 
+## Query transports
+
+`tsbs_run_queries_questdb` can send the generated queries three ways, selected
+with `--query-protocol`:
+
+| Value | Transport | Port | Notes |
+|---|---|---|---|
+| `pg` | PostgreSQL wire (pgx v5) | 8812 | Default, and what QuestDB's published TSBS numbers use |
+| `http` | REST `/exec`, JSON results | 9000 | The original TSBS path. `--use-http` still selects it |
+| `qwp` | QuestDB Wire Protocol, columnar result batches | 9000 | Same protocol and port as QWP ingestion |
+
+All three run the identical SQL with the identical bind parameters, so the
+numbers are comparable: the only difference is how the statement is sent and how
+the rows come back. Query files are protocol-independent, so one file set feeds
+all three, and the choice can be changed between runs without regenerating.
+
+```bash
+./tsbs_run_queries_questdb --file /tmp/queries_questdb --query-protocol qwp
+./tsbs_run_queries_questdb --file /tmp/queries_questdb --query-protocol pg
+./tsbs_run_queries_questdb --file /tmp/queries_questdb --query-protocol http
+```
+
+QWP returns results as columnar batches rather than JSON, which shows up most on
+queries that return many rows or many groups.
+
+## `tsbs_run_queries_questdb` additional flags
+
+**`--query-protocol`** (type: `string`, default: `pg`)
+
+Query transport: `pg`, `http` or `qwp`.
+
+**`--qwp-addr`** (type: `string`, default `127.0.0.1:9000`)
+
+QWP WebSocket endpoint for `--query-protocol=qwp`. A comma-separated list
+enables failover.
+
+**`--qwp-conf`** (type: `string`, default: empty)
+
+Full QWP query client configuration string, overriding the other QWP connection
+flags.
+
+**`--qwp-tls`** (type: `boolean`, default: `false`)
+
+Use TLS for QWP. The certificate check is disabled, so the client trusts any
+server. Combine with `--username` and `--password` for authentication.
+
 ## `tsbs_load_questdb` additional flags
 
 **`--protocol`** (type: `string`, default: `qwp`)
@@ -120,6 +166,14 @@ accept.
 
 Basic auth credentials or bearer token for QWP. Both imply TLS, so pass `--tls`
 with them.
+
+**`--qwp-close-timeout-ms`** (type: `uint`, default: `60000`)
+
+How long `Close` waits for the server to acknowledge outstanding batches. Close
+is the loader's acknowledgement barrier, so this bounds the wait for the last
+batches of a run. The client's own default is 5 seconds, which is not enough for
+a large final flush: if it expires, the loader reports the unacknowledged
+batches and exits non-zero rather than claiming success.
 
 **`--qwp-sf-dir`** (type: `string`, default: empty)
 
@@ -264,10 +318,21 @@ encryption:
   --auth-token "GwBXoGG5c6NoUTLXnzMxw_uNiVa8PKobzx5EiuylMW0"
 ```
 
-The query benchmark tool also supports basic HTTP authentication and TLS encryption:
+The query benchmark tool also supports basic authentication and TLS encryption,
+over HTTP:
 ```bash
 ./tsbs_run_queries_questdb --file /tmp/queries_questdb \
+  --query-protocol http \
   --url "https://localhost:9000" \
+  --username user \
+  --password quest
+```
+and over QWP:
+```bash
+./tsbs_run_queries_questdb --file /tmp/queries_questdb \
+  --query-protocol qwp \
+  --qwp-addr localhost:9000 \
+  --qwp-tls \
   --username user \
   --password quest
 ```
