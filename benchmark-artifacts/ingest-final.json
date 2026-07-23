@@ -1,0 +1,122 @@
+[
+  {
+    "label": "ilp tcp",
+    "workers": 32,
+    "loader_secs": 8.626624584197998,
+    "loader_rows_s": 8012403.846414276,
+    "commit_secs": 18.346065282821655,
+    "committed_rows_s": 3767565.3571733735,
+    "rows": 69120000,
+    "round": 1
+  },
+  {
+    "label": "ilp http",
+    "workers": 32,
+    "loader_secs": 10.259955644607544,
+    "loader_rows_s": 6736871.229684924,
+    "commit_secs": 13.294406652450562,
+    "committed_rows_s": 5199179.008659186,
+    "rows": 69120000,
+    "round": 1
+  },
+  {
+    "label": "qwp",
+    "workers": 32,
+    "loader_secs": 6.227624416351318,
+    "loader_rows_s": 11098935.224564567,
+    "commit_secs": 11.30272126197815,
+    "committed_rows_s": 6115341.464936997,
+    "rows": 69120000,
+    "round": 1
+  },
+  {
+    "label": "qwp, ack",
+    "workers": 32,
+    "loader_secs": 4.842403173446655,
+    "loader_rows_s": 14273904.407427268,
+    "commit_secs": 10.908254623413086,
+    "committed_rows_s": 6336485.751959192,
+    "rows": 69120000,
+    "round": 1
+  },
+  {
+    "label": "ilp tcp",
+    "workers": 32,
+    "loader_secs": 8.72384262084961,
+    "loader_rows_s": 7923114.045501711,
+    "commit_secs": 13.821122407913208,
+    "committed_rows_s": 5001041.01244525,
+    "rows": 69120000,
+    "round": 2
+  },
+  {
+    "label": "ilp http",
+    "workers": 32,
+    "loader_secs": 9.922797203063965,
+    "loader_rows_s": 6965777.752533036,
+    "commit_secs": 13.20112943649292,
+    "committed_rows_s": 5235915.633773437,
+    "rows": 69120000,
+    "round": 2
+  },
+  {
+    "label": "qwp",
+    "workers": 32,
+    "loader_secs": 5.943350076675415,
+    "loader_rows_s": 11629804.589714538,
+    "commit_secs": 10.233440637588501,
+    "committed_rows_s": 6754326.569904064,
+    "rows": 69120000,
+    "round": 2
+  },
+  {
+    "label": "qwp, ack",
+    "workers": 32,
+    "loader_secs": 4.837050914764404,
+    "loader_rows_s": 14289698.665155893,
+    "commit_secs": 10.918129682540894,
+    "committed_rows_s": 6330754.626456701,
+    "rows": 69120000,
+    "round": 2
+  },
+  {
+    "label": "ilp tcp",
+    "workers": 32,
+    "loader_secs": 8.536090850830078,
+    "loader_rows_s": 8097383.358247475,
+    "commit_secs": 13.67448353767395,
+    "committed_rows_s": 5054669.875434097,
+    "rows": 69120000,
+    "round": 3
+  },
+  {
+    "label": "ilp http",
+    "workers": 32,
+    "loader_secs": 9.903821468353271,
+    "loader_rows_s": 6979124.191693726,
+    "commit_secs": 12.954223871231079,
+    "committed_rows_s": 5335711.400935617,
+    "rows": 69120000,
+    "round": 3
+  },
+  {
+    "label": "qwp",
+    "workers": 32,
+    "loader_secs": 6.123360872268677,
+    "loader_rows_s": 11287918.749494076,
+    "commit_secs": 10.166825771331787,
+    "committed_rows_s": 6798582.129232823,
+    "rows": 69120000,
+    "round": 3
+  },
+  {
+    "label": "qwp, ack",
+    "workers": 32,
+    "loader_secs": 4.989238977432251,
+    "loader_rows_s": 13853816.245854218,
+    "commit_secs": 10.792850494384766,
+    "committed_rows_s": 6404239.550613742,
+    "rows": 69120000,
+    "round": 3
+  }
+]

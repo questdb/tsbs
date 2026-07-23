@@ -1,0 +1,354 @@
+{
+  "cpu-max-all-1": {
+    "pg": {
+      "queries_per_sec": 437.46,
+      "mean_ms": 2.27,
+      "error": null
+    },
+    "http": {
+      "queries_per_sec": 519.44,
+      "mean_ms": 1.92,
+      "error": null
+    },
+    "qwp": {
+      "queries_per_sec": 491.7,
+      "mean_ms": 2.01,
+      "error": null
+    },
+    "rows": {
+      "http": 9,
+      "qwp": 9,
+      "match": "yes"
+    }
+  },
+  "cpu-max-all-8": {
+    "pg": {
+      "queries_per_sec": 270.43,
+      "mean_ms": 3.68,
+      "error": null
+    },
+    "http": {
+      "queries_per_sec": 287.04,
+      "mean_ms": 3.48,
+      "error": null
+    },
+    "qwp": {
+      "queries_per_sec": 261.25,
+      "mean_ms": 3.81,
+      "error": null
+    },
+    "rows": {
+      "http": 9,
+      "qwp": 9,
+      "match": "yes"
+    }
+  },
+  "cpu-max-all-32-24": {
+    "pg": {
+      "queries_per_sec": 56.15,
+      "mean_ms": 17.77,
+      "error": null
+    },
+    "http": {
+      "queries_per_sec": 57.13,
+      "mean_ms": 17.49,
+      "error": null
+    },
+    "qwp": {
+      "queries_per_sec": 57.18,
+      "mean_ms": 17.45,
+      "error": null
+    },
+    "rows": {
+      "http": 25,
+      "qwp": 25,
+      "match": "yes"
+    }
+  },
+  "single-groupby-1-1-1": {
+    "pg": {
+      "queries_per_sec": 1381.76,
+      "mean_ms": 0.71,
+      "error": null
+    },
+    "http": {
+      "queries_per_sec": 1445.9,
+      "mean_ms": 0.69,
+      "error": null
+    },
+    "qwp": {
+      "queries_per_sec": 1346.83,
+      "mean_ms": 0.73,
+      "error": null
+    },
+    "rows": {
+      "http": 61,
+      "qwp": 61,
+      "match": "yes"
+    }
+  },
+  "single-groupby-1-1-12": {
+    "pg": {
+      "queries_per_sec": 654.9,
+      "mean_ms": 1.52,
+      "error": null
+    },
+    "http": {
+      "queries_per_sec": 567.1,
+      "mean_ms": 1.76,
+      "error": null
+    },
+    "qwp": {
+      "queries_per_sec": 566.16,
+      "mean_ms": 1.75,
+      "error": null
+    },
+    "rows": {
+      "http": 720,
+      "qwp": 720,
+      "match": "yes"
+    }
+  },
+  "single-groupby-1-8-1": {
+    "pg": {
+      "queries_per_sec": 1002.58,
+      "mean_ms": 0.98,
+      "error": null
+    },
+    "http": {
+      "queries_per_sec": 1075.46,
+      "mean_ms": 0.93,
+      "error": null
+    },
+    "qwp": {
+      "queries_per_sec": 983.15,
+      "mean_ms": 1.0,
+      "error": null
+    },
+    "rows": {
+      "http": 61,
+      "qwp": 61,
+      "match": "yes"
+    }
+  },
+  "single-groupby-5-1-1": {
+    "pg": {
+      "queries_per_sec": 1463.09,
+      "mean_ms": 0.67,
+      "error": null
+    },
+    "http": {
+      "queries_per_sec": 1332.09,
+      "mean_ms": 0.75,
+      "error": null
+    },
+    "qwp": {
+      "queries_per_sec": 1335.02,
+      "mean_ms": 0.74,
+      "error": null
+    },
+    "rows": {
+      "http": 61,
+      "qwp": 61,
+      "match": "yes"
+    }
+  },
+  "single-groupby-5-1-12": {
+    "pg": {
+      "queries_per_sec": 650.79,
+      "mean_ms": 1.53,
+      "error": null
+    },
+    "http": {
+      "queries_per_sec": 496.05,
+      "mean_ms": 2.01,
+      "error": null
+    },
+    "qwp": {
+      "queries_per_sec": 460.2,
+      "mean_ms": 2.16,
+      "error": null
+    },
+    "rows": {
+      "http": 720,
+      "qwp": 720,
+      "match": "yes"
+    }
+  },
+  "single-groupby-5-8-1": {
+    "pg": {
+      "queries_per_sec": 970.53,
+      "mean_ms": 1.02,
+      "error": null
+    },
+    "http": {
+      "queries_per_sec": 995.32,
+      "mean_ms": 1.0,
+      "error": null
+    },
+    "qwp": {
+      "queries_per_sec": 884.67,
+      "mean_ms": 1.12,
+      "error": null
+    },
+    "rows": {
+      "http": 61,
+      "qwp": 61,
+      "match": "yes"
+    }
+  },
+  "double-groupby-1": {
+    "pg": {
+      "queries_per_sec": 30.14,
+      "mean_ms": 33.17,
+      "error": null
+    },
+    "http": {
+      "queries_per_sec": 18.6,
+      "mean_ms": 53.77,
+      "error": null
+    },
+    "qwp": {
+      "queries_per_sec": 30.66,
+      "mean_ms": 32.61,
+      "error": null
+    },
+    "rows": {
+      "http": 52000,
+      "qwp": 52000,
+      "match": "yes"
+    }
+  },
+  "double-groupby-5": {
+    "pg": {
+      "queries_per_sec": 22.18,
+      "mean_ms": 45.06,
+      "error": null
+    },
+    "http": {
+      "queries_per_sec": 10.42,
+      "mean_ms": 95.93,
+      "error": null
+    },
+    "qwp": {
+      "queries_per_sec": 22.06,
+      "mean_ms": 45.31,
+      "error": null
+    },
+    "rows": {
+      "http": 52000,
+      "qwp": 52000,
+      "match": "yes"
+    }
+  },
+  "double-groupby-all": {
+    "pg": {
+      "queries_per_sec": 16.96,
+      "mean_ms": 58.95,
+      "error": null
+    },
+    "http": {
+      "queries_per_sec": 6.92,
+      "mean_ms": 144.43,
+      "error": null
+    },
+    "qwp": {
+      "queries_per_sec": 13.84,
+      "mean_ms": 72.24,
+      "error": null
+    },
+    "rows": {
+      "http": 52000,
+      "qwp": 52000,
+      "match": "yes"
+    }
+  },
+  "high-cpu-1": {
+    "pg": {
+      "queries_per_sec": 196.43,
+      "mean_ms": 5.07,
+      "error": null
+    },
+    "http": {
+      "queries_per_sec": 196.28,
+      "mean_ms": 5.09,
+      "error": null
+    },
+    "qwp": {
+      "queries_per_sec": 217.68,
+      "mean_ms": 4.57,
+      "error": null
+    },
+    "rows": {
+      "http": 810,
+      "qwp": 810,
+      "match": "yes"
+    }
+  },
+  "high-cpu-all": {
+    "pg": {
+      "queries_per_sec": 1.02,
+      "mean_ms": 980.1,
+      "error": null
+    },
+    "http": {
+      "queries_per_sec": 0.69,
+      "mean_ms": 1438.9,
+      "error": null
+    },
+    "qwp": {
+      "queries_per_sec": 1.45,
+      "mean_ms": 690.11,
+      "error": null
+    },
+    "rows": {
+      "http": 1596723,
+      "qwp": 1596723,
+      "match": "yes"
+    }
+  },
+  "lastpoint": {
+    "pg": {
+      "queries_per_sec": 629.55,
+      "mean_ms": 1.58,
+      "error": null
+    },
+    "http": {
+      "queries_per_sec": 495.78,
+      "mean_ms": 2.01,
+      "error": null
+    },
+    "qwp": {
+      "queries_per_sec": 915.74,
+      "mean_ms": 1.09,
+      "error": null
+    },
+    "rows": {
+      "http": 4000,
+      "qwp": 4000,
+      "match": "yes"
+    }
+  },
+  "groupby-orderby-limit": {
+    "pg": {
+      "queries_per_sec": 122.99,
+      "mean_ms": 8.12,
+      "error": null
+    },
+    "http": {
+      "queries_per_sec": 40.3,
+      "mean_ms": 24.8,
+      "error": null
+    },
+    "qwp": {
+      "queries_per_sec": 109.62,
+      "mean_ms": 9.11,
+      "error": null
+    },
+    "rows": {
+      "http": 5,
+      "qwp": 5,
+      "match": "yes"
+    }
+  }
+}

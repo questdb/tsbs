@@ -1,0 +1,30 @@
+[
+  {
+    "label": "ilp tcp, text",
+    "loader_rows_s": 9307004.695520546,
+    "committed_rows_s": 3177809.253329248,
+    "rows": 69120000,
+    "round": 1
+  },
+  {
+    "label": "ilp http, text",
+    "loader_rows_s": 6914654.05215229,
+    "committed_rows_s": 5106912.337950248,
+    "rows": 69120000,
+    "round": 1
+  },
+  {
+    "label": "ilp tcp, text",
+    "loader_rows_s": 12505157.492531896,
+    "committed_rows_s": 3874689.9520092783,
+    "rows": 69120000,
+    "round": 2
+  },
+  {
+    "label": "ilp http, text",
+    "loader_rows_s": 6820616.542082886,
+    "committed_rows_s": 4964539.436985047,
+    "rows": 69120000,
+    "round": 2
+  }
+]

@@ -1,0 +1,194 @@
+[
+  {
+    "wal_workers": "3",
+    "label": "ilp tcp",
+    "round": 1,
+    "loader_rows_s": 9341962.278630905,
+    "committed_rows_s": 3523664.0643607513,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "3",
+    "label": "qwp",
+    "round": 1,
+    "loader_rows_s": 11241945.94859538,
+    "committed_rows_s": 6164338.851563844,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "3",
+    "label": "qwp ack",
+    "round": 1,
+    "loader_rows_s": 13588988.448457446,
+    "committed_rows_s": 6485112.17358188,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "3",
+    "label": "ilp tcp",
+    "round": 2,
+    "loader_rows_s": 11270495.565806413,
+    "committed_rows_s": 3272618.010716693,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "3",
+    "label": "qwp",
+    "round": 2,
+    "loader_rows_s": 11940441.613437004,
+    "committed_rows_s": 6856600.914537337,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "3",
+    "label": "qwp ack",
+    "round": 2,
+    "loader_rows_s": 13416502.47483801,
+    "committed_rows_s": 6157906.928038693,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "8",
+    "label": "ilp tcp",
+    "round": 1,
+    "loader_rows_s": 9310275.429533208,
+    "committed_rows_s": 3388527.107949907,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "8",
+    "label": "qwp",
+    "round": 1,
+    "loader_rows_s": 11312458.581346313,
+    "committed_rows_s": 5783333.890833045,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "8",
+    "label": "qwp ack",
+    "round": 1,
+    "loader_rows_s": 13067827.07375537,
+    "committed_rows_s": 6360578.1474704845,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "8",
+    "label": "ilp tcp",
+    "round": 2,
+    "loader_rows_s": 10917136.546161298,
+    "committed_rows_s": 3650304.8554860484,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "8",
+    "label": "qwp",
+    "round": 2,
+    "loader_rows_s": 12291358.730304899,
+    "committed_rows_s": 6632726.474057969,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "8",
+    "label": "qwp ack",
+    "round": 2,
+    "loader_rows_s": 13596562.273256999,
+    "committed_rows_s": 6319001.388234664,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "16",
+    "label": "ilp tcp",
+    "round": 1,
+    "loader_rows_s": 8842422.297265766,
+    "committed_rows_s": 3497384.1301315594,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "16",
+    "label": "qwp",
+    "round": 1,
+    "loader_rows_s": 11150038.205697555,
+    "committed_rows_s": 6000015.035309321,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "16",
+    "label": "qwp ack",
+    "round": 1,
+    "loader_rows_s": 13517683.266047284,
+    "committed_rows_s": 6465756.980561667,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "16",
+    "label": "ilp tcp",
+    "round": 2,
+    "loader_rows_s": 11746801.297491262,
+    "committed_rows_s": 3687716.110332091,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "16",
+    "label": "qwp",
+    "round": 2,
+    "loader_rows_s": 10730535.992156439,
+    "committed_rows_s": 6757118.857486584,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "16",
+    "label": "qwp ack",
+    "round": 2,
+    "loader_rows_s": 13580735.942950005,
+    "committed_rows_s": 6487683.505915476,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "31",
+    "label": "ilp tcp",
+    "round": 1,
+    "loader_rows_s": 9717721.849992797,
+    "committed_rows_s": 3518725.54561947,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "31",
+    "label": "qwp",
+    "round": 1,
+    "loader_rows_s": 11093523.635675138,
+    "committed_rows_s": 5857302.635961321,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "31",
+    "label": "qwp ack",
+    "round": 1,
+    "loader_rows_s": 13639586.257675523,
+    "committed_rows_s": 6347856.45665423,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "31",
+    "label": "ilp tcp",
+    "round": 2,
+    "loader_rows_s": 12263157.616715608,
+    "committed_rows_s": 3391907.699581761,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "31",
+    "label": "qwp",
+    "round": 2,
+    "loader_rows_s": 11388985.920861105,
+    "committed_rows_s": 6501388.486712141,
+    "rows": 69120000
+  },
+  {
+    "wal_workers": "31",
+    "label": "qwp ack",
+    "round": 2,
+    "loader_rows_s": 13230498.382344907,
+    "committed_rows_s": 6252235.299212322,
+    "rows": 69120000
+  }
+]

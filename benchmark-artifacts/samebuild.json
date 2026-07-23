@@ -1,0 +1,146 @@
+[
+  {
+    "scale": 4000,
+    "label": "ilp tcp",
+    "round": 1,
+    "loader_rows_s": 9596823.98046965,
+    "committed_rows_s": 3473344.8039498255,
+    "rows": 69120000
+  },
+  {
+    "scale": 4000,
+    "label": "qwp",
+    "round": 1,
+    "loader_rows_s": 10425517.642557329,
+    "committed_rows_s": 5551468.606784041,
+    "rows": 69120000
+  },
+  {
+    "scale": 4000,
+    "label": "qwp ack",
+    "round": 1,
+    "loader_rows_s": 13970420.310641194,
+    "committed_rows_s": 6412285.132318744,
+    "rows": 69120000
+  },
+  {
+    "scale": 4000,
+    "label": "ilp tcp",
+    "round": 2,
+    "loader_rows_s": 12869086.067203097,
+    "committed_rows_s": 3217589.810020664,
+    "rows": 69120000
+  },
+  {
+    "scale": 4000,
+    "label": "qwp",
+    "round": 2,
+    "loader_rows_s": 11659231.6392724,
+    "committed_rows_s": 6924407.890516172,
+    "rows": 69120000
+  },
+  {
+    "scale": 4000,
+    "label": "qwp ack",
+    "round": 2,
+    "loader_rows_s": 13733327.968414562,
+    "committed_rows_s": 6372110.070545919,
+    "rows": 69120000
+  },
+  {
+    "scale": 4000,
+    "label": "ilp tcp",
+    "round": 3,
+    "loader_rows_s": 12287364.095409796,
+    "committed_rows_s": 3468550.379749113,
+    "rows": 69120000
+  },
+  {
+    "scale": 4000,
+    "label": "qwp",
+    "round": 3,
+    "loader_rows_s": 11302556.091280553,
+    "committed_rows_s": 6812653.726750001,
+    "rows": 69120000
+  },
+  {
+    "scale": 4000,
+    "label": "qwp ack",
+    "round": 3,
+    "loader_rows_s": 13670108.677513687,
+    "committed_rows_s": 6356037.646051034,
+    "rows": 69120000
+  },
+  {
+    "scale": 100000,
+    "label": "ilp tcp",
+    "round": 1,
+    "loader_rows_s": 10514932.548540268,
+    "committed_rows_s": 3751294.447987337,
+    "rows": 86400000
+  },
+  {
+    "scale": 100000,
+    "label": "qwp",
+    "round": 1,
+    "loader_rows_s": 11509553.061530879,
+    "committed_rows_s": 2905887.661052329,
+    "rows": 86400000
+  },
+  {
+    "scale": 100000,
+    "label": "qwp ack",
+    "round": 1,
+    "loader_rows_s": 9748367.896678044,
+    "committed_rows_s": 5171371.129939617,
+    "rows": 86400000
+  },
+  {
+    "scale": 100000,
+    "label": "ilp tcp",
+    "round": 2,
+    "loader_rows_s": 8808012.3123802,
+    "committed_rows_s": 4111662.113714478,
+    "rows": 86400000
+  },
+  {
+    "scale": 100000,
+    "label": "qwp",
+    "round": 2,
+    "loader_rows_s": 12242416.393387685,
+    "committed_rows_s": 2993938.835548801,
+    "rows": 86400000
+  },
+  {
+    "scale": 100000,
+    "label": "qwp ack",
+    "round": 2,
+    "loader_rows_s": 10249069.947776072,
+    "committed_rows_s": 5561514.211617913,
+    "rows": 86400000
+  },
+  {
+    "scale": 100000,
+    "label": "ilp tcp",
+    "round": 3,
+    "loader_rows_s": 9567379.592317771,
+    "committed_rows_s": 3786044.244667971,
+    "rows": 86400000
+  },
+  {
+    "scale": 100000,
+    "label": "qwp",
+    "round": 3,
+    "loader_rows_s": 10958743.292459037,
+    "committed_rows_s": 3573334.835288597,
+    "rows": 86400000
+  },
+  {
+    "scale": 100000,
+    "label": "qwp ack",
+    "round": 3,
+    "loader_rows_s": 10300620.357441789,
+    "committed_rows_s": 5494267.207289936,
+    "rows": 86400000
+  }
+]

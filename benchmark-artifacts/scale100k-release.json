@@ -1,0 +1,38 @@
+[
+  {
+    "build": "release",
+    "window": "dense-2h24m",
+    "label": "ilp tcp",
+    "round": 1,
+    "loader_rows_s": 10904775.36223031,
+    "committed_rows_s": 3177560.4809353226,
+    "rows": 86400000
+  },
+  {
+    "build": "release",
+    "window": "dense-2h24m",
+    "label": "ilp tcp",
+    "round": 2,
+    "loader_rows_s": 10410983.771795316,
+    "committed_rows_s": 4680611.398212861,
+    "rows": 86400000
+  },
+  {
+    "build": "release",
+    "window": "sparse-2day",
+    "label": "ilp tcp",
+    "round": 1,
+    "loader_rows_s": 10577031.580442974,
+    "committed_rows_s": 4039761.5203442583,
+    "rows": 86400000
+  },
+  {
+    "build": "release",
+    "window": "sparse-2day",
+    "label": "ilp tcp",
+    "round": 2,
+    "loader_rows_s": 10089749.590424307,
+    "committed_rows_s": 3554960.5902648596,
+    "rows": 86400000
+  }
+]
