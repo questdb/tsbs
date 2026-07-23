@@ -26,6 +26,16 @@ and wall time until the server's row count reaches 69,120,000
 | `scale100k-release.json`, `scale100k-nightly-stock.json`, `scale100k-nightly-tuned.json` | 100K hosts on each build and ILP pool size, both window interpretations |
 | `samebuild.json` | the fair fight: ILP/TCP with 31 io workers versus QWP on one nightly server, 4,000 and 100,000 hosts |
 | `walapply.json` | `QDB_WAL_APPLY_WORKER_COUNT` at 3, 8, 16 and 31 |
+| `split-results.json` | first split-host run, 4,000 hosts only |
+| `split-results-17280000.json`, `-69120000.json`, `-86400000.json` | split-host sweep at 1,000 / 4,000 / 100,000 hosts, loader on a second instance over the private network. These carry the `wire_gbit_s` field, which is where the ILP transports are shown pinned at 14.7 Gbit/s |
+| `split-replay-69120000.json`, `split-replay-86400000.json` | first `--qwp-preencode-replay` attempt over the network. Superseded: the harness mis-timed the committed count (wall clock included the ~50s pre-encode phase). Kept for provenance; use the two files below instead |
+| `replay-localhost-69120000.json` | corrected pre-encode replay on the server box over loopback: 45-50M rows/s, all rows verified visible. QWP's server-side ingest ceiling |
+| `replay-network-69120000.json` | corrected pre-encode replay from the client box over the network: 18.3-19.3M rows/s, all rows verified visible. Network-bound, matching the 14.7 Gbit/s link. Both files: batch 30k+ crashes the replay frame cap, so only 10k and 20k rounds are present |
+
+The split-host runs used a second r8a.8xlarge (`i-0296bb57cfdd46c1f`) as the
+client, talking to the server at its private IP over the same subnet. That is
+the topology in section 1 of the write-up, and the one where QWP's advantage is
+real rather than a rounding error.
 
 ## Harness
 

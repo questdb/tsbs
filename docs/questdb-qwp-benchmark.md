@@ -4,12 +4,17 @@ All figures are **rows sent per second**, the loader's own timer, which is the
 convention behind QuestDB's published TSBS numbers. Raw results and the harness
 are in [../benchmark-artifacts/](../benchmark-artifacts/).
 
-**Short version.** With stock settings the nightly build makes ILP/TCP look
-catastrophic, 1.7M rows/s against QWP's 11.1M. That is a thread-pool default,
-not a protocol difference: size the ILP pools like the others and ILP/TCP
-reaches 12.9M. On a fairly configured server QWP and ILP/TCP are level, and QWP
-only pulls ahead with per-batch acks, by about 19% at 4,000 hosts and 5% at
-100,000. Queries are where QWP wins clearly, and only when results are large.
+**Short version.** With client and server on the same box, QWP and a
+well-configured ILP/TCP are roughly level on rows sent, because both share the
+32 cores and QWP's client-side encoding competes with the server for them. Put
+the client on its own instance, which is how a database is actually run, and the
+picture separates cleanly: **ILP saturates the network at 5.3M rows/s while QWP
+sustains 9-12M**, 1.7-2.2x faster, because line protocol text is 3.4x larger on
+the wire. That is the result that matters, and it is in section 1.
+
+The rest of the document is how we got there: a nightly thread-pool default that
+made ILP/TCP look catastrophic until corrected, the same-host numbers where the
+two look level, the ack policy, a scale sweep, and queries.
 
 ## Setup
 
@@ -22,11 +27,135 @@ only pulls ahead with per-batch acks, by about 19% at 4,000 hosts and 5% at
 | Client | TSBS `jv/adding_qwp`, 32 workers, batch size 10,000, same box as the server |
 | Data | cpu-only, seed 123, 10s interval, 10 symbol columns and 10 long columns per row |
 
-Client and server share the machine, matching the published comparison posts.
 Each transport reads its own format: line protocol text for ILP, the binary
-`questdb-qwp` format for QWP.
+`questdb-qwp` format for QWP. Sections 3 onward have client and server on one
+box, matching the published comparison posts. Section 1 splits them onto two
+instances, and section 2 isolates where QWP's bottleneck sits.
 
-## 1. Stock defaults, 4,000 hosts
+### How the loader sends QWP
+
+QWP is the QuestDB Wire Protocol: a binary, columnar protocol spoken over a
+WebSocket on port 9000, provided by the Go client
+(`github.com/questdb/go-questdb-client/v4`). The loader uses it like this:
+
+- **One sender per worker.** QWP has no connection pool. A single sender already
+  pipelines: it appends rows into an in-memory cursor engine and a background
+  goroutine delivers them over the WebSocket. So for 32 workers the loader opens
+  32 independent senders, each `ws::addr=HOST:9000;auto_flush=off;`, rather than
+  pooling one.
+- **Rows are built through the client's typed API.** For every point the loader
+  calls `Table(name)`, then `Symbol(k, v)` for each tag, then `Int64Column` /
+  `Float64Column` for each field, then `At(ts)` to close the row. The client
+  encodes each value into the columnar wire format at this point. This is true
+  even when the input is the binary `questdb-qwp` file: that format removes the
+  *text parsing* (names and numbers arrive pre-decoded), but every row still
+  passes through the client's encoder. **That encoding is the per-row CPU cost,
+  and it is the client bottleneck section 2 isolates.**
+- **Flush per TSBS batch, not per row.** Auto-flush is off; the loader flushes on
+  each batch boundary (default 10,000 rows). Flushing per batch keeps each
+  published frame under the server's ~2 MiB batch cap and amortises the
+  round-trip.
+- **Publish, not commit, by default.** `Flush` hands the batch to the cursor
+  engine and returns; it does not wait for the server. `--qwp-await-ack` instead
+  blocks on the server acknowledgement per batch, and a clean `Close` drains and
+  waits for all outstanding acks at end of run. This is the "sent vs visible"
+  distinction that recurs throughout: a flushed row is on its way, not yet
+  queryable.
+
+The pre-encode replay path in section 2 bypasses this entirely: it runs the
+client encoder once to produce the WebSocket frames, writes them to disk, then
+replays the raw frames. That is why it removes the client cost from the timed
+interval and exposes the network and server ceilings underneath.
+
+ILP, by contrast, does almost no client work: the text is already the wire
+format, so the loader writes bytes to a socket (TCP) or POSTs them (HTTP). That
+asymmetry is the whole reason the same-host comparison is unfair to QWP, and why
+the split-host and replay results below matter.
+
+## 1. Split client and server: the result that matters
+
+A real deployment does not run the loader on the database machine. Put the
+client on its own r8a.8xlarge in the same subnet and point it at the server over
+the private network. Both boxes are 32 vCPU; the link is what the instance class
+provides, which these runs show to be about 14.7 Gbit/s.
+
+Rows sent, three rounds at each scale:
+
+| scale | ILP TCP | ILP HTTP | QWP | QWP + ack |
+|---|---|---|---|---|
+| 1,000 | 5.20-5.22M | 5.10-5.19M | 8.67-9.68M | **11.50-11.61M** |
+| 4,000 | 5.29-5.32M | 5.30M | 9.15-9.81M | **11.32-11.95M** |
+| 100,000 | 5.26-5.30M | 5.22-5.28M | 8.75-9.07M | 8.99-9.05M |
+
+The wire throughput each of those implies is the whole story:
+
+| transport | rows sent | wire used | of 14.7 Gbit/s |
+|---|---|---|---|
+| ILP TCP | 5.3M | 14.7 Gbit/s | **saturated** |
+| ILP HTTP | 5.3M | 14.7 Gbit/s | **saturated** |
+| QWP | 9.4M | 7.6 Gbit/s | 52% |
+| QWP + ack | 11.9M | 9.8 Gbit/s | 67% |
+
+Both ILP transports pin at the network ceiling at every cardinality, within 1%
+of each other across nine runs each. Line protocol text is ~347 bytes/row, so
+5.3M rows/s is simply what the link carries; the protocol, the server and the
+client are all idle behind it. QWP's binary format is ~103 bytes/row, so the
+same link would carry ~17.8M rows/s, and QWP is not yet close to it: at 7.6
+Gbit/s the constraint is the Go client's encoding, not the wire or the server.
+
+So in a split deployment QWP sends **1.7x** ILP plain and **2.2x** with acks,
+and has headroom the ILP transports do not. This is where a binary columnar
+protocol is supposed to win, and it does. It is invisible in the same-host
+sections below because loopback has no bandwidth limit, which hands line
+protocol a 3.4x subsidy no real network gives it.
+
+Two caveats worth stating with the number:
+
+- At 100,000 hosts, plain QWP commits (rows made visible) at only ~1.1M rows/s
+  while sending 9M. With `--qwp-await-ack` it holds ~6.8M, the best of any
+  transport at that scale. At high cardinality acks are required, not optional.
+- 9.4M is what the Go client can push, not what the wire or server can take.
+  Removing the client encoding (section 2) lifts QWP to 18.5M over this same
+  network, still with every row verified visible. The 9.4M is a client-encoding
+  limit, and closing it is the single biggest lever for QWP ingestion.
+
+## 2. Where the bottleneck is: client, network, or server
+
+Section 1 shows QWP over the network at 9.4M rows/s using half the link, so
+something other than the wire is capping it. To find out what, run the same 69.1M
+rows three ways with `--qwp-preencode-replay`, which encodes all the QWP frames
+to disk first and times only the replay-and-acknowledge. That takes the Go
+client's row-building and encoding out of the timed path, leaving just network
+and server. Every run below was confirmed to make all 69,120,000 rows visible,
+not merely sent.
+
+| configuration | rows/s sent | bounded by |
+|---|---|---|
+| QWP via the Go client, over network | 9.4M | **client encoding** |
+| QWP pre-encode replay, over network | **18.3-19.3M** | **network** (14.7 Gbit/s) |
+| QWP pre-encode replay, localhost | **45-50M** | **server** |
+
+Three separate ceilings, cleanly separated:
+
+- The **Go client** caps QWP at 9.4M. Doubling to 18.5M by pre-encoding is the
+  measure of what the client encoding costs, and it is the biggest single lever
+  for QWP ingestion. (Raphael's flag; the frame pre-encoding it does is
+  deliberately excluded from the timed interval, so this is a server-and-network
+  diagnostic, not an end-to-end loader number.)
+- The **network** caps the replay at 18.5M: 18.5M x 103 bytes x 8 = 15.2 Gbit/s,
+  right at the 14.7 Gbit/s the ILP transports measured as the link ceiling.
+- The **server** ingests 45-50M on localhost, which physically cannot cross the
+  wire (that would need 40 Gbit/s), so it only appears on loopback. This is the
+  QWP server's true ingest capacity, and it is ~4-9x what ILP reaches.
+
+Two notes. The replay path crashes above ~20,000 rows per frame
+(`batch too large ... sendfile: broken pipe`); 10k and 20k are clean, so those
+are the figures above. And "sent" is not "visible": the server applies the
+write-ahead log at ~6.5M rows/s at this scale (section 7), so replayed rows land
+over ~10s rather than at 18M/s. On rows sent QWP beats ILP by the wire-size
+ratio; on rows made queryable both are WAL-apply-bound and much closer.
+
+## 3. Same host, stock defaults, 4,000 hosts
 
 69.1M rows, nightly build, nothing configured. Rows sent per second, two rounds:
 
@@ -40,7 +169,7 @@ Each transport reads its own format: line protocol text for ILP, the binary
 Read on its own this says QWP is 6-8x ILP/TCP, and that is how it looked this
 morning. It is wrong, and the ILP/TCP row is the reason.
 
-## 2. The ILP/TCP number is a thread-pool default
+## 4. The ILP/TCP number is a thread-pool default
 
 The nightly gives ILP/TCP its own pools and leaves them at 2 threads on a
 32-core box, where everything else gets 31:
@@ -74,7 +203,7 @@ reachable on the nightly with stock settings, which matters because TSBS runs
 with defaults by convention: if this default ships, every published QuestDB line
 protocol figure drops by 5-9x.
 
-## 3. Fair comparison, 4,000 hosts
+## 5. Fair comparison, 4,000 hosts
 
 Same nightly server, ILP pools at 31 so ILP performs as it does on the release.
 Three rounds, rows sent:
@@ -88,7 +217,7 @@ Three rounds, rows sent:
 Plain QWP is marginally *behind* ILP/TCP. Only with per-batch acks does it lead,
 by 19%. Everything above that came from ILP being hobbled.
 
-## 4. Other scales
+## 6. Other scales
 
 Rows sent. The 100 and 1,000 host runs used 16 ILP workers, so ILP is somewhat
 understated there; 100,000 is shown at both 16 and 31.
@@ -110,7 +239,7 @@ throughput; the published table's 100-host figure deserves the same caveat.
 Across the range, QWP leads ILP/TCP by roughly 10-20% at 1,000 and 100,000
 hosts, and is level at 4,000. It is better, not dramatically so.
 
-## 5. Write-ahead log apply workers make no difference
+## 7. Write-ahead log apply workers make no difference
 
 Worth ruling out: the server runs 3 `wal-apply` threads by default on a 32-core
 box. Sweeping `QDB_WAL_APPLY_WORKER_COUNT` to 8, 16 and 31 (verified as taking
@@ -119,7 +248,7 @@ otherwise. TSBS writes a single table and apply appears to parallelise per
 table, so the extra workers have nothing to share. Whether the default of 3 is
 adequate for a multi-table workload is untested.
 
-## 6. Queries
+## 8. Queries
 
 4,000 hosts, all 16 cpu-only query types, 1000 queries each, one worker.
 Queries/sec, winner in bold:
@@ -153,7 +282,7 @@ encoding is the cost. The PostgreSQL wire still wins `double-groupby-all` and
 Rows returned over QWP were cross-checked against the HTTP response for all 16
 types and match exactly, including the 1,596,723-row case.
 
-## 7. Data volume
+## 9. Data volume
 
 The same 69.1M rows: 23.98 GB as line protocol text, 7.12 GB as
 `questdb-qwp` binary, 3.4x smaller. Irrelevant when client and server share a
