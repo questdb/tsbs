@@ -7,7 +7,6 @@ import (
 	"io"
 	"math"
 	"sync"
-	"time"
 
 	"github.com/questdb/tsbs/pkg/data"
 	"github.com/questdb/tsbs/pkg/data/usecases/common"
@@ -334,11 +333,7 @@ func (p *qwpProcessor) writeBinaryRow(s *qwpSchema, row []byte, dict []string) e
 	if len(row) < 8 {
 		return errQwpTruncated
 	}
-	ts := int64(binary.LittleEndian.Uint64(row))
-	if nanoTimestamps {
-		return p.sender.AtNano(p.ctx, time.Unix(0, ts))
-	}
-	return p.sender.At(p.ctx, time.Unix(0, ts))
+	return p.at(int64(binary.LittleEndian.Uint64(row)))
 }
 
 // compile-time assertion that the batch satisfies the loader interface.

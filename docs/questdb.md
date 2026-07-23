@@ -63,24 +63,74 @@ Queries are unaffected: generate them with `--format questdb` in both cases.
 
 ## Ingestion protocols
 
-The loader can ingest over two protocols, selected with `--protocol`:
+The loader can ingest over three protocols, selected with `--protocol`:
 
 - **`qwp`** (default): the QuestDB Wire Protocol, a binary columnar protocol
   spoken over a WebSocket on the main HTTP port (9000). One sender per worker,
   flushed on every TSBS batch boundary.
-- **`ilp`**: the legacy path, hand-written InfluxDB line protocol text written
-  to the TCP port (9009). Kept for comparison against other TSBS targets, which
-  all speak a text line protocol over a socket.
+- **`ilp-http`**: line protocol over HTTP on port 9000, sent with the client
+  library rather than by hand.
+- **`ilp`**: the original path, hand-written line protocol text written straight
+  to the TCP port (9009). It is what TSBS has always measured, and every other
+  TSBS target speaks a text line protocol over a socket.
 
-The two differ in what a completed write means. ILP over TCP is
-fire-and-forget: the write returns once the bytes reach the socket buffer and
-the server never acknowledges them. QWP publishes each batch to the sender's
-cursor engine and a background goroutine delivers it, so a flush means
-"published", not "committed". The loader closes its senders at the end of the
-run, and a clean close drains and waits for outstanding server acknowledgements,
-so the final row count reported for a successful QWP run is server-confirmed.
-Use `--qwp-await-ack` if every intermediate report must be acknowledged too;
-that serialises the pipeline and lowers throughput.
+### `ilp` over TCP depends heavily on the server's thread pools
+
+An ILP/TCP figure says as much about the server's configuration as about the
+transport. Measured on a 32 vCPU r8a.8xlarge loading 69.1M rows with 32 workers,
+send rates:
+
+| server | ILP/TCP | ILP/HTTP |
+|---|---|---|
+| QuestDB 9.4.3 release, defaults | 9.3-12.5M rows/s | 6.8-6.9M rows/s |
+| QuestDB 9.4.4-SNAPSHOT nightly, defaults | 1.7M rows/s | 6.9-7.0M rows/s |
+| the same nightly, `QDB_LINE_TCP_IO_WORKER_COUNT=16` | 8.0M rows/s | - |
+
+ILP/TCP swings by a factor of seven across builds and settings while ILP/HTTP
+stays put. The nightly gives the ILP/TCP pools 2 threads while `shared-write`,
+`shared-query` and `shared-network` each get 31, so line protocol parsing is
+confined to two threads no matter how many clients connect; the release build
+has no separate ILP pool at all and serves TCP from the shared pools. Thirty-two
+connections were verified as established in every case, and the loader reads and
+parses that file at 17.3M rows/s with `--do-load=false`, so neither the client
+nor the connection count is the limit.
+
+Record the server build and the ILP thread-pool sizes alongside any ILP/TCP
+number, or use `ilp-http`, which is served by the shared pools and needed no
+tuning on either build.
+
+ILP/TCP's send rate also flatters it most. Being fire-and-forget, it outruns
+write-ahead log apply by the widest margin: on the release build it sends at
+9.3-12.5M rows/s but commits at 3.2-3.9M, while HTTP sends at 6.8-6.9M and
+commits at 5.0-5.1M. The transport that looks fastest on the wire is the slowest
+to make rows visible.
+
+### What a completed write means
+
+The three differ, which matters when quoting a rate:
+
+- **`ilp`** is fire-and-forget: the write returns once the bytes reach the
+  socket buffer and the server never acknowledges them. Its reported rate is
+  bytes-on-wire, and overstates committed throughput.
+- **`ilp-http`** is request/response: a successful flush means the server
+  processed that batch.
+- **`qwp`** publishes each batch to the sender's cursor engine and a background
+  goroutine delivers it, so a flush means "published", not "committed". The
+  loader closes its senders at the end of the run, and a clean close drains and
+  waits for outstanding acknowledgements, so the final row count for a
+  successful QWP run is server-confirmed. Use `--qwp-await-ack` if every
+  intermediate report must be acknowledged too; that serialises the pipeline.
+
+Whichever you use, confirming the row count from the server afterwards is the
+only measurement that is comparable across all three.
+
+This is not a pedantic distinction. On the 69.1M-row load above, QWP sends at
+11.5M rows/s with `--qwp-await-ack` off and 14.3M with it on, yet the committed
+rate moves the other way, 6.7M down to 6.3M. Awaiting acks makes the publish
+phase finish sooner (6.0s to 4.8s) and leaves correspondingly more write-ahead
+log to apply after the loader exits (4.2s to 6.0s). A send rate can therefore be
+moved 25% purely by changing when the client waits, so quote the committed
+figure, or quote both and say which is which.
 
 QWP support lives in `github.com/questdb/go-questdb-client/v4` and has not been
 released yet, so `go.mod` tracks the client's `main` branch as a pseudo-version.
@@ -141,7 +191,11 @@ server. Combine with `--username` and `--password` for authentication.
 
 **`--protocol`** (type: `string`, default: `qwp`)
 
-Ingestion protocol, either `qwp` or `ilp`.
+Ingestion protocol: `qwp`, `ilp-http` or `ilp`.
+
+**`--ilp-http-addr`** (type: `string`, default `127.0.0.1:9000`)
+
+QuestDB HTTP endpoint for `--protocol=ilp-http`, in the format `<ip>:<port>`.
 
 **`--qwp-addr`** (type: `string`, default `127.0.0.1:9000`)
 
@@ -250,7 +304,13 @@ Generated data can be loaded directly using the tool:
 ./tsbs_load_questdb --file /tmp/data --workers 4
 ```
 
-That ingests over QWP. To load over the legacy ILP/TCP path instead:
+That ingests over QWP. To load the same text over line protocol on HTTP:
+
+```bash
+./tsbs_load_questdb --file /tmp/data --workers 4 --protocol ilp-http
+```
+
+Or over line protocol on TCP, the path TSBS has always used:
 
 ```bash
 ./tsbs_load_questdb --file /tmp/data --workers 4 --protocol ilp

@@ -29,8 +29,13 @@ const maxInternedValues = 1 << 16
 // One sender per worker: QWP has no sender pool, a single sender already
 // pipelines transmission through its cursor engine and I/O goroutine.
 type qwpProcessor struct {
-	ctx    context.Context
-	sender qdb.QwpSender
+	ctx context.Context
+
+	// sender is the row builder every path writes through. qwp is the
+	// same object when the transport is QWP, and nil for ILP over HTTP,
+	// which has no publish/ack split: its Flush is the round trip.
+	sender qdb.LineSender
+	qwp    qdb.QwpSender
 
 	// intern keeps a single copy of every table name, column name and
 	// symbol value seen by this worker, so parsing a line does not
@@ -46,28 +51,33 @@ func (p *qwpProcessor) Init(numWorker int, doLoad, _ bool) {
 	p.ctx = context.Background()
 	p.intern = make(map[string]string)
 
-	sender, err := qdb.LineSenderFromConf(p.ctx, qwpConf(numWorker))
+	conf := senderConf(numWorker)
+	sender, err := qdb.LineSenderFromConf(p.ctx, conf)
 	if err != nil {
-		fatal("failed to create QWP sender: %v", err)
+		fatal("failed to create sender: %v", err)
 		return
 	}
-	qwp, ok := sender.(qdb.QwpSender)
-	if !ok {
-		fatal("configuration %q did not yield a QWP sender, use the ws:: or wss:: scheme", qwpConf(numWorker))
-		return
+	p.sender = sender
+
+	if protocol == protocolQWP {
+		qwp, ok := sender.(qdb.QwpSender)
+		if !ok {
+			fatal("configuration %q did not yield a QWP sender, use the ws:: or wss:: scheme", conf)
+			return
+		}
+		p.qwp = qwp
 	}
-	p.sender = qwp
 }
 
-// Close drains the sender. A clean Close waits for outstanding server
-// ACKs (bounded by close_flush_timeout_millis), so it doubles as the
-// end-of-run acknowledgement barrier for everything still in flight.
+// Close drains the sender. For QWP a clean Close waits for outstanding
+// server ACKs (bounded by close_flush_timeout_millis), so it doubles as
+// the end-of-run acknowledgement barrier for everything still in flight.
 func (p *qwpProcessor) Close(doLoad bool) {
 	if !doLoad || p.sender == nil {
 		return
 	}
 	if err := p.sender.Close(p.ctx); err != nil {
-		fatal("failed to close QWP sender: %v", err)
+		fatal("failed to close sender: %v", err)
 	}
 }
 
@@ -132,19 +142,38 @@ func (p *qwpProcessor) processBinaryBatch(b *qwpBatch, doLoad bool) (uint64, uin
 	return metricCnt, uint64(rowCnt)
 }
 
-// flush publishes the buffered rows, optionally waiting for the server to
-// acknowledge them.
+// flush sends the buffered rows. Over ILP/HTTP that is a round trip, so a
+// clean return means the server processed the batch. Over QWP it is a
+// publish: the batch is durably queued and a background goroutine
+// delivers it, and only AwaitAckedFsn blocks on server confirmation.
 func (p *qwpProcessor) flush() error {
-	fsn, err := p.sender.FlushAndGetSequence(p.ctx)
+	if p.qwp == nil {
+		if err := p.sender.Flush(p.ctx); err != nil {
+			return fmt.Errorf("failed to flush batch: %v", err)
+		}
+		return nil
+	}
+
+	fsn, err := p.qwp.FlushAndGetSequence(p.ctx)
 	if err != nil {
 		return fmt.Errorf("failed to flush QWP batch: %v", err)
 	}
 	if awaitAck {
-		if err := p.sender.AwaitAckedFsn(p.ctx, fsn); err != nil {
+		if err := p.qwp.AwaitAckedFsn(p.ctx, fsn); err != nil {
 			return fmt.Errorf("failed to await ack for fsn %d: %v", fsn, err)
 		}
 	}
 	return nil
+}
+
+// at closes the current row. AtNano is QWP-only, so the nanosecond option
+// applies only there; ILP/HTTP always sends microseconds, which is what
+// the ILP/TCP path produces too.
+func (p *qwpProcessor) at(ts int64) error {
+	if nanoTimestamps && p.qwp != nil {
+		return p.qwp.AtNano(p.ctx, time.Unix(0, ts))
+	}
+	return p.sender.At(p.ctx, time.Unix(0, ts))
 }
 
 // writeRow parses a single ILP line and emits it through the QWP row
@@ -207,15 +236,12 @@ func (p *qwpProcessor) writeRow(line []byte) error {
 		return fmt.Errorf("malformed timestamp %q: %v", tsRaw, err)
 	}
 	// At sends a microsecond timestamp, which is what the ILP path
-	// produces, so both protocols create the same table. AtNano keeps
+	// produces, so every transport creates the same table. AtNano keeps
 	// the generator's nanosecond timestamps instead, at the cost of a
 	// TIMESTAMP_NS designated column that an ILP-created table does not
 	// have. A table's resolution is fixed by its first row, so the
 	// choice has to be the same for every row.
-	if nanoTimestamps {
-		return p.sender.AtNano(p.ctx, time.Unix(0, ts))
-	}
-	return p.sender.At(p.ctx, time.Unix(0, ts))
+	return p.at(ts)
 }
 
 // appendField maps an ILP field value onto a typed QWP column, following

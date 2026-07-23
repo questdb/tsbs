@@ -25,26 +25,28 @@ import (
 
 // Ingestion protocols supported by the loader.
 const (
-	protocolQWP = "qwp"
-	protocolILP = "ilp"
+	protocolQWP     = "qwp"
+	protocolILP     = "ilp"
+	protocolILPHTTP = "ilp-http"
 )
 
 // Program option vars:
 var (
-	protocol          string
-	questdbILPBindTo  string
-	questdbQWPAddr    string
-	qwpConfString     string
-	qwpUser           string
-	qwpPassword       string
-	qwpToken          string
-	qwpSFDir          string
-	awaitAck          bool
-	nanoTimestamps    bool
-	qwpCloseTimeoutMs uint
-	useTLS            bool
-	authTokenId       string
-	authToken         string
+	protocol           string
+	questdbILPBindTo   string
+	questdbILPHTTPAddr string
+	questdbQWPAddr     string
+	qwpConfString      string
+	qwpUser            string
+	qwpPassword        string
+	qwpToken           string
+	qwpSFDir           string
+	awaitAck           bool
+	nanoTimestamps     bool
+	qwpCloseTimeoutMs  uint
+	useTLS             bool
+	authTokenId        string
+	authToken          string
 )
 
 // Global vars
@@ -83,7 +85,8 @@ func init() {
 	pflag.CommandLine.Bool("tls", false, "Whether to use TLS encryption for database connection. The certificate check is disabled, so the client will trust any server")
 	pflag.CommandLine.String("auth-id", "", "ILP authentication token id")
 	pflag.CommandLine.String("auth-token", "", "ILP authentication token")
-	pflag.CommandLine.String("protocol", protocolQWP, "Ingestion protocol: 'qwp' (QuestDB Wire Protocol over WebSocket) or 'ilp' (influx line protocol over TCP)")
+	pflag.CommandLine.String("protocol", protocolQWP, "Ingestion protocol: 'qwp' (QuestDB Wire Protocol over WebSocket), 'ilp-http' (influx line protocol over HTTP) or 'ilp' (influx line protocol over TCP)")
+	pflag.CommandLine.String("ilp-http-addr", "127.0.0.1:9000", "QuestDB HTTP ip:port for --protocol=ilp-http")
 	pflag.CommandLine.String("qwp-conf", "", "Full QWP client configuration string. Overrides every other QWP connection flag")
 	pflag.CommandLine.String("qwp-user", "", "QWP basic auth user name")
 	pflag.CommandLine.String("qwp-password", "", "QWP basic auth password")
@@ -106,10 +109,14 @@ func init() {
 	}
 
 	protocol = viper.GetString("protocol")
-	if protocol != protocolQWP && protocol != protocolILP {
-		panic(fmt.Errorf("unknown protocol %q, expected %q or %q", protocol, protocolQWP, protocolILP))
+	switch protocol {
+	case protocolQWP, protocolILP, protocolILPHTTP:
+	default:
+		panic(fmt.Errorf("unknown protocol %q, expected %q, %q or %q",
+			protocol, protocolQWP, protocolILPHTTP, protocolILP))
 	}
 	questdbILPBindTo = viper.GetString("ilp-bind-to")
+	questdbILPHTTPAddr = viper.GetString("ilp-http-addr")
 	questdbQWPAddr = viper.GetString("qwp-addr")
 	qwpConfString = viper.GetString("qwp-conf")
 	qwpUser = viper.GetString("qwp-user")
@@ -148,16 +155,63 @@ func (b *benchmark) GetPointIndexer(_ uint) targets.PointIndexer {
 }
 
 func (b *benchmark) GetProcessor() targets.Processor {
-	if protocol == protocolQWP {
+	// Both client-library transports share the row-builder processor;
+	// only the legacy raw-socket ILP path has its own.
+	if protocol == protocolQWP || protocol == protocolILPHTTP {
 		return &qwpProcessor{}
 	}
 	return &processor{}
 }
 
-// qwpConf builds the client configuration string for a worker's QWP
+// senderConf builds the client configuration string for a worker's
 // sender. Auto-flush is off: the loader flushes on TSBS batch boundaries,
-// which also keeps every published batch below the server's ~2 MiB frame
-// cap at the default --batch-size.
+// which for QWP also keeps every published batch below the server's
+// ~2 MiB frame cap at the default --batch-size.
+func senderConf(numWorker int) string {
+	if protocol == protocolILPHTTP {
+		return ilpHTTPConf()
+	}
+	return qwpConf(numWorker)
+}
+
+// ilpHTTPConf configures line protocol over HTTP. Unlike the TCP path it
+// is request/response, so a successful Flush means the server processed
+// that batch. It is also served by the server's shared thread pools rather
+// than the dedicated ILP/TCP pools, whose size varies by build and
+// configuration, which makes it the steadier line protocol baseline.
+func ilpHTTPConf() string {
+	if qwpConfString != "" {
+		return qwpConfString
+	}
+
+	var sb strings.Builder
+	if useTLS {
+		sb.WriteString("https::")
+	} else {
+		sb.WriteString("http::")
+	}
+	sb.WriteString("addr=")
+	sb.WriteString(questdbILPHTTPAddr)
+	sb.WriteString(";auto_flush=off;")
+	if useTLS {
+		sb.WriteString("tls_verify=unsafe_off;")
+	}
+	if qwpUser != "" {
+		sb.WriteString("username=")
+		sb.WriteString(qwpUser)
+		sb.WriteString(";password=")
+		sb.WriteString(qwpPassword)
+		sb.WriteString(";")
+	}
+	if qwpToken != "" {
+		sb.WriteString("token=")
+		sb.WriteString(qwpToken)
+		sb.WriteString(";")
+	}
+	return sb.String()
+}
+
+// qwpConf builds the QWP configuration string.
 func qwpConf(numWorker int) string {
 	if qwpConfString != "" {
 		return qwpConfString
@@ -222,8 +276,11 @@ func main() {
 		fatal("failed to read input: %v", err)
 	}
 	if binaryInput {
-		if protocol != protocolQWP {
-			fatal("input is a binary QWP data file, which --protocol=%s cannot send. Generate with --format questdb for ILP", protocol)
+		// Both client-library transports build rows through the same
+		// API, so either can send a binary file. Only the legacy
+		// raw-socket ILP path needs line protocol text.
+		if protocol == protocolILP {
+			fatal("input is a binary QWP data file, which --protocol=%s cannot send. Generate with --format questdb for ILP over TCP", protocol)
 		}
 		qwpDec, err = newQwpDecoder(input)
 		if err != nil {

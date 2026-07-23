@@ -31,9 +31,11 @@ var benchLine = []byte("cpu,hostname=host_0,region=eu-central-1,datacenter=eu-ce
 // BenchmarkQwpWriteRow measures parsing one generated cpu-only line and
 // dispatching it into the row builder.
 func BenchmarkQwpWriteRow(b *testing.B) {
+	s := &noopSender{}
 	p := &qwpProcessor{
 		ctx:    context.Background(),
-		sender: &noopSender{},
+		sender: s,
+		qwp:    s,
 		intern: make(map[string]string),
 	}
 

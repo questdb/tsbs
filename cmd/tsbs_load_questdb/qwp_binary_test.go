@@ -240,9 +240,11 @@ func BenchmarkQwpWriteBinaryRow(b *testing.B) {
 	dict := dec.strings
 	rowCopy := append([]byte(nil), row...)
 
+	s := &noopSender{}
 	p := &qwpProcessor{
 		ctx:    context.Background(),
-		sender: &noopSender{},
+		sender: s,
+		qwp:    s,
 		intern: make(map[string]string),
 	}
 

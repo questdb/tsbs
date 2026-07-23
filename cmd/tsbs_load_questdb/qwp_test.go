@@ -75,6 +75,11 @@ func (s *recordingSender) AtNano(_ context.Context, ts time.Time) error {
 	return nil
 }
 
+func (s *recordingSender) Flush(_ context.Context) error {
+	s.flushes++
+	return nil
+}
+
 func (s *recordingSender) FlushAndGetSequence(_ context.Context) (int64, error) {
 	s.flushes++
 	s.nextFsn++
@@ -92,6 +97,18 @@ func (s *recordingSender) Close(_ context.Context) error {
 }
 
 func newTestQwpProcessor() (*qwpProcessor, *recordingSender) {
+	s := &recordingSender{}
+	return &qwpProcessor{
+		ctx:    context.Background(),
+		sender: s,
+		qwp:    s,
+		intern: make(map[string]string),
+	}, s
+}
+
+// newTestILPHTTPProcessor builds the processor as the ILP-over-HTTP path
+// does: a plain LineSender with no QWP capabilities.
+func newTestILPHTTPProcessor() (*qwpProcessor, *recordingSender) {
 	s := &recordingSender{}
 	return &qwpProcessor{
 		ctx:    context.Background(),
@@ -231,6 +248,47 @@ func TestQwpProcessBatch(t *testing.T) {
 	}
 	if len(s.awaited) != 1 || s.awaited[0] != 1 {
 		t.Errorf("expected the batch fsn to be awaited, got %v", s.awaited)
+	}
+}
+
+// TestILPHTTPProcessBatch checks the ILP-over-HTTP path: same rows, but a
+// plain Flush rather than publish-and-ack, and microsecond timestamps even
+// when nanoseconds are requested, since AtNano is QWP-only.
+func TestILPHTTPProcessBatch(t *testing.T) {
+	bufPool = sync.Pool{
+		New: func() interface{} {
+			return bytes.NewBuffer(make([]byte, 0, 4*1024*1024))
+		},
+	}
+	f := &factory{}
+	b := f.New().(*batch)
+	b.Append(data.LoadedPoint{
+		Data: []byte("cpu,hostname=host_0 usage_user=1i,usage_system=2i 140"),
+	})
+
+	fatal = func(format string, args ...interface{}) {
+		t.Errorf("fatal called unexpectedly: "+format, args...)
+	}
+	defer func() { fatal = t.Fatalf }()
+
+	nanoTimestamps = true
+	defer func() { nanoTimestamps = false }()
+
+	p, s := newTestILPHTTPProcessor()
+	mCnt, rCnt := p.ProcessBatch(b, true)
+
+	if mCnt != 2 || rCnt != 1 {
+		t.Errorf("counts: got %d metrics %d rows, want 2 and 1", mCnt, rCnt)
+	}
+	if s.flushes != 1 {
+		t.Errorf("expected 1 flush, got %d", s.flushes)
+	}
+	if len(s.awaited) != 0 {
+		t.Errorf("ILP/HTTP must not await an fsn, got %v", s.awaited)
+	}
+	want := "cpu sym:hostname=host_0 i64:usage_user=1 i64:usage_system=2 ts:140"
+	if len(s.rows) != 1 || s.rows[0] != want {
+		t.Errorf("rows:\n got  %v\n want %q", s.rows, want)
 	}
 }
 
