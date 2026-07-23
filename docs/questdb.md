@@ -132,6 +132,28 @@ log to apply after the loader exits (4.2s to 6.0s). A send rate can therefore be
 moved 25% purely by changing when the client waits, so quote the committed
 figure, or quote both and say which is which.
 
+### Isolating QWP server ingestion
+
+`--qwp-preencode-replay` is a server-capacity diagnostic for binary
+`questdb-qwp` input. It first uses the stock Go client to produce valid QWP
+WebSocket frames, then starts the timer and replays those frames over fresh
+connections:
+
+```bash
+./tsbs_load_questdb \
+  --file /tmp/data_qwp \
+  --protocol qwp \
+  --workers 32 \
+  --batch-size 45000 \
+  --qwp-preencode-replay
+```
+
+The reported rate includes connection setup, network transfer, server
+processing, and the final cumulative ACK. Input decoding and QWP encoding are
+reported separately and excluded. This makes the result useful for finding a
+server-side ceiling, but it is not an end-to-end loader or client benchmark;
+report regular QWP results separately.
+
 QWP support lives in `github.com/questdb/go-questdb-client/v4` and has not been
 released yet, so `go.mod` tracks the client's `main` branch as a pseudo-version.
 Go records a concrete version rather than a floating one, so refresh it with:
@@ -228,6 +250,12 @@ is the loader's acknowledgement barrier, so this bounds the wait for the last
 batches of a run. The client's own default is 5 seconds, which is not enough for
 a large final flush: if it expires, the loader reports the unacknowledged
 batches and exits non-zero rather than claiming success.
+
+**`--qwp-preencode-replay`** (type: `boolean`, default: `false`)
+
+Pre-encode binary input outside the timed interval and replay the stock
+client's QWP WebSocket frames. This measures the QWP server path without the
+loader's row-building cost. The final cumulative ACK is required.
 
 **`--qwp-sf-dir`** (type: `string`, default: empty)
 

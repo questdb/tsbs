@@ -44,6 +44,7 @@ var (
 	awaitAck           bool
 	nanoTimestamps     bool
 	qwpCloseTimeoutMs  uint
+	qwpPreencodeReplay bool
 	useTLS             bool
 	authTokenId        string
 	authToken          string
@@ -95,6 +96,7 @@ func init() {
 	pflag.CommandLine.Bool("qwp-await-ack", false, "Wait for the server to acknowledge every batch before counting it. Slower, but every reported row is server-confirmed when counted")
 	pflag.CommandLine.Bool("qwp-nano-timestamps", false, "Send nanosecond designated timestamps over QWP. Off by default so that the table matches the one the ILP path creates, which is microsecond resolution")
 	pflag.CommandLine.Uint("qwp-close-timeout-ms", 60000, "How long Close waits for the server to acknowledge outstanding batches. Close is the loader's ack barrier, so this bounds the wait for the last batches of a run")
+	pflag.CommandLine.Bool("qwp-preencode-replay", false, "Pre-encode binary TSBS input into QWP WebSocket frames outside the timed interval, then replay those frames. This measures server ingestion without row-builder CPU")
 	target.TargetSpecificFlags("", pflag.CommandLine)
 	pflag.Parse()
 
@@ -126,6 +128,7 @@ func init() {
 	awaitAck = viper.GetBool("qwp-await-ack")
 	nanoTimestamps = viper.GetBool("qwp-nano-timestamps")
 	qwpCloseTimeoutMs = viper.GetUint("qwp-close-timeout-ms")
+	qwpPreencodeReplay = viper.GetBool("qwp-preencode-replay")
 	useTLS = viper.GetBool("tls")
 	authTokenId = viper.GetString("auth-id")
 	authToken = viper.GetString("auth-token")
@@ -286,6 +289,25 @@ func main() {
 		if err != nil {
 			fatal("failed to read QWP data file: %v", err)
 		}
+	}
+
+	if qwpPreencodeReplay {
+		if protocol != protocolQWP {
+			fatal("--qwp-preencode-replay requires --protocol=%s", protocolQWP)
+		}
+		if qwpDec == nil {
+			fatal("--qwp-preencode-replay requires binary QWP input generated with --format=questdb-qwp")
+		}
+		if qwpConfString != "" {
+			fatal("--qwp-preencode-replay does not support --qwp-conf; use the explicit QWP address and authentication flags")
+		}
+		if awaitAck {
+			fatal("--qwp-await-ack paces every generated batch and is incompatible with raw replay; replay validates the final cumulative ACK instead")
+		}
+		if err := runQwpPreencodedReplay(qwpDec, config); err != nil {
+			fatal("QWP pre-encoded replay failed: %v", err)
+		}
+		return
 	}
 
 	loader.RunBenchmark(&benchmark{})
