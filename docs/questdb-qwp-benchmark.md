@@ -1,24 +1,15 @@
 # TSBS on QuestDB: QWP vs ILP, AWS r8a.8xlarge
 
-Findings from a day of benchmarking QWP against line protocol on EC2, written
-for the engineering team. Raw results and the full harness are in
-[../benchmark-artifacts/](../benchmark-artifacts/).
+All figures are **rows sent per second**, the loader's own timer, which is the
+convention behind QuestDB's published TSBS numbers. Raw results and the harness
+are in [../benchmark-artifacts/](../benchmark-artifacts/).
 
-**Short version.** On rows sent, the metric QuestDB publishes, QWP is roughly at
-parity with a correctly configured ILP/TCP: marginally behind at 4,000 hosts,
-about 20% ahead at 100,000, and about 19% ahead at 4,000 if per-batch acks are
-enabled. The 1.4-1.7x margins we saw earlier in the day were an artefact of the
-nightly build serving ILP/TCP from a 2-thread pool.
-
-QWP's ingestion advantage is in rows made *visible*: at identical server
-configuration it commits 1.85x faster than ILP/TCP, or 1.34x against the
-best-tuned ILP configuration. That gap is reproducible across eight independent
-runs and is not caused by write-ahead log apply starvation - raising apply
-workers from 3 to 31 changes nothing for either transport, and the two do not
-converge, so apply is not a shared ceiling.
-
-ILP also carries a tuning tension that QWP does not: enlarging its thread pools
-raises its send rate and lowers its committed rate.
+**Short version.** With stock settings the nightly build makes ILP/TCP look
+catastrophic, 1.7M rows/s against QWP's 11.1M. That is a thread-pool default,
+not a protocol difference: size the ILP pools like the others and ILP/TCP
+reaches 12.9M. On a fairly configured server QWP and ILP/TCP are level, and QWP
+only pulls ahead with per-batch acks, by about 19% at 4,000 hosts and 5% at
+100,000. Queries are where QWP wins clearly, and only when results are large.
 
 ## Setup
 
@@ -32,152 +23,101 @@ raises its send rate and lowers its committed rate.
 | Data | cpu-only, seed 123, 10s interval, 10 symbol columns and 10 long columns per row |
 
 Client and server share the machine, matching the published comparison posts.
+Each transport reads its own format: line protocol text for ILP, the binary
+`questdb-qwp` format for QWP.
 
-Two metrics are reported throughout:
+## 1. Stock defaults, 4,000 hosts
 
-- **sent** - the loader's own timer, which stops when the last batch has been
-  handed to the transport. This is the convention behind the published figures.
-- **committed** - wall time from loader start until the server's `count`
-  reaches the expected total, i.e. when the rows are visible to a client.
+69.1M rows, nightly build, nothing configured. Rows sent per second, two rounds:
 
-## 1. The nightly serves ILP/TCP from a 2-thread pool
+| transport | round 1 | round 2 |
+|---|---|---|
+| ILP over TCP | 1.68M | 1.66M |
+| ILP over HTTP | 7.14M | 6.94M |
+| QWP | 10.50M | 11.49M |
+| QWP + per-batch ack | 13.57M | 14.49M |
 
-This is the finding with consequences beyond QWP.
+Read on its own this says QWP is 6-8x ILP/TCP, and that is how it looked this
+morning. It is wrong, and the ILP/TCP row is the reason.
 
-Thread pools on a 32-core box, stock configuration:
+## 2. The ILP/TCP number is a thread-pool default
+
+The nightly gives ILP/TCP its own pools and leaves them at 2 threads on a
+32-core box, where everything else gets 31:
 
 ```
-9.4.3 release   31 shared-write   31 shared-query   31 shared-network   3 wal-apply
+9.4.3 release   31 shared-write   31 shared-query   31 shared-network
                 (no separate ILP pool: TCP is served by the shared pools)
 
-9.4.4 nightly   31 shared-write   31 shared-query   31 shared-network   3 wal-apply
+9.4.4 nightly   31 shared-write   31 shared-query   31 shared-network
                  2 ilpio           2 ilpwriter
 ```
 
-ILP/TCP send rates, same hardware, data and client:
+Same hardware, same data, same client, ILP/TCP only:
 
-| server | 4,000 hosts | 100,000 hosts |
-|---|---|---|
-| 9.4.3 release, stock | 9.3 / 12.5M rows/s | 10.9 / 10.4M rows/s |
-| 9.4.4 nightly, stock | 1.7M rows/s | 1.2M rows/s |
-| nightly, 16 ILP io + writer workers | 8.0M rows/s | 6.3-8.3M rows/s |
-| nightly, 31 ILP io + writer workers | 9.6 / 12.9 / 12.3M rows/s | 10.5 / 8.8 / 9.6M rows/s |
+| server | rows sent |
+|---|---|
+| nightly, stock (2 ILP workers) | 1.7M |
+| nightly, 16 ILP io + writer workers | 8.0M |
+| nightly, 31 ILP io + writer workers | 9.6 / 12.9 / 12.3M |
+| 9.4.3 release, stock | 9.3 / 12.5M |
 
-The nightly's stock configuration is **5.5x slower at 4,000 hosts and 8.7x
-slower at 100,000** than the release. Restoring parity takes 31 io and 31 writer
-workers; 16 is not enough.
+Sized properly, ILP/TCP on the nightly matches the release build. The 1.7M was
+never a protocol result.
 
-Ruled out as causes: the client (32 connections were verified established in
-every run, and the loader parses the same file at 17.3M rows/s with
-`--do-load=false`), Docker port mapping (host networking changed nothing), and
-the data shape (dense 2h24m and sparse 2-day windows at 100K differ by less than
-round-to-round noise).
+Ruled out as causes: the client (32 connections verified established every run,
+and the loader parses that file at 17.3M rows/s with `--do-load=false`), Docker
+port mapping (host networking changed nothing), and data shape.
 
-The published 8.39M at 4,000 hosts and 11.36M at 100,000 both reproduce on the
-release build. Neither is reachable on the nightly with stock settings.
+The published 8.39M at 4,000 hosts reproduces on the release build. It is not
+reachable on the nightly with stock settings, which matters because TSBS runs
+with defaults by convention: if this default ships, every published QuestDB line
+protocol figure drops by 5-9x.
 
-**Why this matters.** TSBS benchmarks run with default configuration by
-convention. If this default ships, every published QuestDB line protocol figure
-drops by 5-9x, and anyone re-running the comparison against InfluxDB or
-ClickHouse will report the lower number.
+## 3. Fair comparison, 4,000 hosts
 
-## 2. QWP versus ILP on the same build
+Same nightly server, ILP pools at 31 so ILP performs as it does on the release.
+Three rounds, rows sent:
 
-Nightly with 31 ILP io and writer workers, so ILP/TCP performs as it does on the
-release. Three rounds, each transport reading its own format: line protocol text
-for ILP, the binary `questdb-qwp` format for QWP.
-
-**Rows sent:**
-
-| scale | ILP TCP | QWP | QWP + ack |
-|---|---|---|---|
-| 4,000 | 9.60 / 12.87 / 12.29M | 10.43 / 11.66 / 11.30M | **13.97 / 13.73 / 13.67M** |
-| 100,000 | 10.51 / 8.81 / 9.57M | **11.51 / 12.24 / 10.96M** | 9.75 / 10.25 / 10.30M |
-
-Means: at 4,000, ILP 11.6M, QWP 11.1M, QWP+ack 13.8M. At 100,000, ILP 9.6M,
-QWP 11.6M, QWP+ack 10.1M.
-
-**Rows committed:**
-
-| scale | ILP TCP | QWP | QWP + ack |
-|---|---|---|---|
-| 4,000 | 3.2-3.5M | **5.6-6.9M** | 6.4M |
-| 100,000 | 3.8-4.1M | 2.9-3.6M | **5.2-5.6M** |
-
-So on sent, QWP is at parity, and the best QWP configuration beats the best ILP
-configuration by 19% at 4,000 hosts and 5% at 100,000. On committed, QWP is
-1.9x at 4,000 and 1.35x at 100,000, provided acks are enabled at high
-cardinality.
-
-Note that ILP's committed rate got *worse* when its pools grew from 16 to 31
-workers (about 5.0M down to 3.2-3.5M at 4,000 hosts): it sends faster and leaves
-a longer write-ahead log backlog. The best ILP configuration depends on which
-metric is being optimised.
-
-## 3. The ack policy moves the send rate by 25%
-
-QWP binary at 4,000 hosts, three rounds, split into phases:
-
-| | publish | drain (Close) | WAL tail | total | sent | committed |
-|---|---|---|---|---|---|---|
-| no ack | 6.00s | 0.06s | 4.20s | 10.27s | 11.5M | **6.73M** |
-| ack per batch | 4.83s | 0.06s | 6.01s | 10.90s | **14.3M** | 6.34M |
-
-Awaiting the ack on every batch makes the publish phase finish 20% sooner and
-leaves correspondingly more log to apply after the loader exits. Nothing hides
-in `Close` either way. At 4,000 hosts, not awaiting is 6% better end to end.
-
-At 100,000 hosts the relationship inverts: plain QWP commits at 2.9-3.6M and is
-unstable between rounds, while awaiting acks holds 5.2-5.6M. Pacing the client
-to the server is worth 1.5-1.9x at high cardinality.
-
-A QWP send rate can therefore be moved 25% by changing when the client waits,
-while committed throughput moves the other way. Any published send rate needs
-the ack policy stated beside it.
-
-## 4. Write-ahead log apply workers change nothing
-
-Every transport commits far below what it sends, and the server runs 3
-`wal-apply` threads by default on a 32-core box, so apply looked like the
-obvious constraint. It is not. Sweeping `QDB_WAL_APPLY_WORKER_COUNT` with ILP
-pools pinned at 31, 4,000 hosts, two rounds each, committed rows/s:
-
-| wal-apply workers | ILP TCP | QWP | QWP + ack |
-|---|---|---|---|
-| 3 (default) | 3.52 / 3.27M | 6.16 / 6.86M | 6.49 / 6.16M |
-| 8 | 3.39 / 3.65M | 5.78 / 6.63M | 6.36 / 6.32M |
-| 16 | 3.50 / 3.69M | 6.00 / 6.76M | 6.47 / 6.49M |
-| 31 | 3.52 / 3.39M | 5.86 / 6.50M | 6.35 / 6.25M |
-
-The thread count was verified as taking effect after each restart. Ten times the
-apply workers produces no change for any transport.
-
-Two conclusions follow. First, TSBS writes a single table and apply appears to
-parallelise per table, so the extra workers have one table's work to share; that
-does not tell us whether the default of 3 is adequate for a customer running
-many tables, which is worth testing separately with a multi-table workload.
-
-Second, and more useful: **apply is not a shared ceiling.** At identical
-configuration, on the same table and the same apply path, ILP commits at ~3.5M
-and QWP at ~6.5M. If apply were the limit they would converge. The 1.85x gap is
-a property of the ingestion path, not of the server being starved downstream.
-
-## 5. Scale sweep
-
-Committed rows/s across host counts. ILP here ran with 16 io workers, so its
-figures at 4,000 and 100,000 are better read from section 2; the sweep is most
-useful for the shape across scales.
-
-| scale | rows | ILP TCP | QWP | QWP + ack |
+| transport | r1 | r2 | r3 | mean |
 |---|---|---|---|---|
-| 100 | 1.7M | 1.92 / 2.74M | 1.73 / 3.63M | 3.48 / 3.52M |
-| 1,000 | 17.3M | 4.40 / 4.82M | **6.10 / 7.36M** | 6.61 / 6.17M |
-| 4,000 | 69.1M | ~5.0M | **6.7M** | 6.3M |
-| 100,000 | 86.4M | 5.36 / 5.10M | 2.41 / 3.87M | **5.73 / 5.54M** |
+| ILP over TCP | 9.60M | 12.87M | 12.29M | 11.6M |
+| QWP | 10.43M | 11.66M | 11.30M | 11.1M |
+| QWP + per-batch ack | 13.97M | 13.73M | 13.67M | **13.8M** |
 
-Absolute throughput climbs with scale for every transport: at 100 hosts the
-whole load is over in under a second, so that row measures startup rather than
-throughput. The published table's 100-host figure deserves the same caveat.
+Plain QWP is marginally *behind* ILP/TCP. Only with per-batch acks does it lead,
+by 19%. Everything above that came from ILP being hobbled.
+
+## 4. Other scales
+
+Rows sent. The 100 and 1,000 host runs used 16 ILP workers, so ILP is somewhat
+understated there; 100,000 is shown at both 16 and 31.
+
+| scale | rows | ILP TCP | ILP HTTP | QWP | QWP + ack |
+|---|---|---|---|---|---|
+| 100 | 1.7M | 2.71 / 4.60M | 3.32 / 4.81M | 2.32 / 7.77M | 7.15 / 7.33M |
+| 1,000 | 17.3M | 6.52 / 6.13M | 6.96 / 7.06M | 11.00 / 10.87M | **12.88 / 13.64M** |
+| 4,000 | 69.1M | 9.60 / 12.87 / 12.29M | 6.74 / 6.97M | 10.43 / 11.66 / 11.30M | **13.97 / 13.73M** |
+| 100,000 (16 ILP workers) | 86.4M | 7.31 / 6.71M | 6.09 / 6.03M | **11.99 / 11.74M** | 10.46 / 9.87M |
+| 100,000 (31 ILP workers) | 86.4M | 10.51 / 8.81 / 9.57M | - | **11.51 / 12.24 / 10.96M** | 9.75 / 10.25 / 10.30M |
+
+At 100,000 hosts on the release build, stock, ILP/TCP sends 10.9 / 10.4M, and
+the published figure for that scale is 11.36M, so it reproduces there too.
+
+The 100-host row is over in under a second and measures startup rather than
+throughput; the published table's 100-host figure deserves the same caveat.
+
+Across the range, QWP leads ILP/TCP by roughly 10-20% at 1,000 and 100,000
+hosts, and is level at 4,000. It is better, not dramatically so.
+
+## 5. Write-ahead log apply workers make no difference
+
+Worth ruling out: the server runs 3 `wal-apply` threads by default on a 32-core
+box. Sweeping `QDB_WAL_APPLY_WORKER_COUNT` to 8, 16 and 31 (verified as taking
+effect) changed nothing for any transport at 4,000 hosts, on send rate or
+otherwise. TSBS writes a single table and apply appears to parallelise per
+table, so the extra workers have nothing to share. Whether the default of 3 is
+adequate for a multi-table workload is untested.
 
 ## 6. Queries
 
@@ -204,8 +144,8 @@ Queries/sec, winner in bold:
 | single-groupby-5-8-1 | 61 | 971 | **995** | 885 |
 
 Result-set size decides it. QWP wins where results are large: 2.1x HTTP and 1.4x
-pg on the 1.6M-row query, 1.85x and 1.45x on `lastpoint`. On aggregates
-returning tens of rows all three transports are within a few percent. HTTP
+the PostgreSQL wire on the 1.6M-row query, 1.85x and 1.45x on `lastpoint`. On
+aggregates returning tens of rows all three are within a few percent. HTTP
 collapses on wide results, 2-3x behind on the double-groupbys, where JSON
 encoding is the cost. The PostgreSQL wire still wins `double-groupby-all` and
 `groupby-orderby-limit`.
@@ -215,63 +155,41 @@ types and match exactly, including the 1,596,723-row case.
 
 ## 7. Data volume
 
-The same 69.1M rows, both generator formats:
+The same 69.1M rows: 23.98 GB as line protocol text, 7.12 GB as
+`questdb-qwp` binary, 3.4x smaller. Irrelevant when client and server share a
+machine, potentially significant across a network, which this benchmark does not
+test.
 
-| format | size |
-|---|---|
-| `questdb`, line protocol text | 23.98 GB |
-| `questdb-qwp`, binary | 7.12 GB |
-
-3.4x smaller on disk and on the wire. Irrelevant when client and server share a
-machine, and likely significant across a real network, which this benchmark does
-not test.
-
-## Open questions for engineering
+## Open questions
 
 1. **Is the nightly's ILP/TCP thread-pool default intended to ship?** Under the
-   defaults convention it costs 5-9x and would invalidate the published
-   comparisons. If TCP is deliberately deprioritised as legacy, the published
-   benchmarks need re-running over ILP/HTTP or the defaults need revisiting.
+   defaults convention it costs 5-9x and invalidates the published comparisons.
 
-2. **Why does QWP's committed throughput collapse at 100,000 hosts without
-   acks** (2.9-3.6M, unstable) **while per-batch acks hold 5.2-5.6M?** Every
-   other configuration is reproducible within a few percent. A client that
-   publishes 12M rows/s into a server that applies 5M rows/s is the common
-   factor, but the instability specifically at high cardinality is not
-   explained.
+2. **QWP's send rate moves 25% with the ack policy alone** (11.5M without,
+   14.3M with, at 4,000 hosts). Any published QWP figure needs the ack policy
+   stated beside it.
 
-3. **Why does awaiting acks make the publish phase faster** (4.83s versus
-   6.00s)? Backpressure or ring contention is the obvious guess, unverified.
+3. **Is a cross-network benchmark worth running?** QWP's 3.4x smaller wire
+   footprint is invisible when client and server share a box, and every
+   published TSBS number is same-host.
 
-4. **Why does ILP/TCP commit at half QWP's rate on the same apply path?** At
-   identical configuration ILP holds ~3.5M and QWP ~6.5M, and apply workers make
-   no difference to either (section 4). Both write the same table with the same
-   schema, so the difference is upstream of apply, in how each transport's rows
-   reach the log. This is now the most interesting open question, because it is
-   where QWP's advantage actually lives.
+4. **Is 3 `wal-apply` threads adequate for multi-table workloads?** It made no
+   difference here because TSBS writes one table. The `iot` use case would
+   answer it.
 
-5. **Why does ILP's committed rate fall as its pools grow** (5.0M at 16 workers
-   to 3.2-3.5M at 31)? Consistent with sending further ahead of apply, but it
-   means "tune for throughput" and "tune for visibility" point in opposite
-   directions.
+## A note on the other metric
 
-6. **Is a cross-network benchmark worth running?** QWP's 3.4x smaller wire
-   footprint is invisible when client and server share a box. Published TSBS
-   numbers are all same-host, so this would be new ground rather than a
-   comparable figure.
-
-7. **Is 3 `wal-apply` threads adequate for multi-table workloads?** It made no
-   difference here because TSBS writes one table, but that is the case least
-   likely to expose a per-table apply design. The `iot` use case, which writes
-   several tables, would answer it.
+Every run also recorded wall time until the server's `count` reached the
+expected total, i.e. when rows become visible to a client. It is not what
+QuestDB publishes, so it is kept out of the tables above, but the gap is large
+and consistent: at 4,000 hosts ILP/TCP commits at ~3.5M rows/s against QWP's
+~6.5M at identical configuration. That is the one place QWP is ahead by a wide
+margin. The figures are in `benchmark-artifacts/` if the team wants them.
 
 ## Methodology notes
 
-- Every ingestion figure is the mean of 2-3 rounds against a table dropped and
-  recreated between runs.
-- Committed timings poll `select count from cpu` until it reaches the expected
-  total. QuestDB applies the write-ahead log asynchronously, so a count taken
-  immediately after a load always reads low.
+- Every figure is the mean of 2-3 rounds against a table dropped and recreated
+  between runs.
 - The first QWP run against a freshly started server is 30-50% slow from JIT
   warm-up. Discard it, or run ILP first.
 - `high-cpu-all` dominates the query suite, 16-25 minutes per transport against
