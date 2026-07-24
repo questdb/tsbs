@@ -155,6 +155,53 @@ write-ahead log at ~6.5M rows/s at this scale (section 7), so replayed rows land
 over ~10s rather than at 18M/s. On rows sent QWP beats ILP by the wire-size
 ratio; on rows made queryable both are WAL-apply-bound and much closer.
 
+### The CPU split, measured
+
+Direct evidence for "the client competes with the server for cores", sampled
+from `/proc` during a co-located 4,000-host load (100% = one core, box has
+3200%):
+
+| load | loader CPU | server CPU | total |
+|---|---|---|---|
+| QWP | 958% | 2006% | 2964% |
+| QWP + ack | 1165% | 1817% | 2982% |
+| ILP TCP | 169% | 2557% | 2726% |
+| ILP HTTP | 1263% | 1670% | 2933% |
+
+The QWP loader burns ~10 of 32 cores encoding rows; the ILP/TCP loader burns
+~1.7, because its text is already the wire format and it only writes bytes to a
+socket. On a shared box every core the QWP client takes is one the server does
+not get, which is why co-located QWP and ILP come out level despite QWP doing
+far less work server-side. Normalised per million rows/s, QWP costs the server
+**1.81 cores** against ILP/TCP's 2.11 and ILP/HTTP's 2.39 - QWP is the most
+server-efficient transport, and that efficiency only turns into throughput once
+the client is off the box (sections 1 and 2). These figures were measured once
+and are not in a saved results file; they live only here.
+
+### Direct-frame rate across cardinalities
+
+The pre-encode control figure (rows sent, loader's own timer, batch 10k) was not
+run at every scale. What exists:
+
+| scale | over network | localhost | rows verified visible |
+|---|---|---|---|
+| 1,000 | not run | not run | - |
+| 4,000 | 18.3-19.3M | 45-50M | yes |
+| 100,000 | 12.1-12.3M | not run | send only |
+
+The 4,000-host row is the complete one, measured both ways with every row
+confirmed visible. The 100,000-host network figure is trustworthy as a send rate
+(it comes from the loader's own timer, which excludes pre-encoding) but its
+committed count was not verified. There is no 1,000-host direct-frame run.
+
+The finding worth keeping: even with the client removed, the server's pure-frame
+ingest rate **falls with cardinality**, 18M at 4,000 hosts to 12M at 100,000.
+This is the clearest signal in the whole set of the server-side cost of high
+cardinality, and it is the pre-encode number, so it is not a client artefact.
+For comparison the Go-client QWP send rate over the network barely moves with
+cardinality (9.4M at 4k, 9.0M at 100k) because the client, not the server, is
+its limit at both.
+
 ## 3. Same host, stock defaults, 4,000 hosts
 
 69.1M rows, nightly build, nothing configured. Rows sent per second, two rounds:
