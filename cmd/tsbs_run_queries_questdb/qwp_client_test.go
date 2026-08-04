@@ -4,7 +4,11 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+
+	"github.com/questdb/tsbs/pkg/query"
 )
+
+var _ query.ProcessorCloser = (*processor)(nil)
 
 func TestQueryProtocolContract(t *testing.T) {
 	if defaultQueryProtocol != protocolPGWire {

@@ -41,10 +41,11 @@ func NewQwpClient(conf string, opts *QwpClientDoOptions) (*QwpClient, error) {
 	return &QwpClient{client: client, ctx: ctx, opts: opts}, nil
 }
 
-func (c *QwpClient) Close() {
-	if c.client != nil {
-		c.client.Close(c.ctx)
+func (c *QwpClient) Close() error {
+	if c.client == nil {
+		return nil
 	}
+	return c.client.Close(c.ctx)
 }
 
 // Do runs one query and returns its latency in milliseconds. Like the

@@ -23,11 +23,13 @@ type recordingSender struct {
 	sb   strings.Builder
 	rows []string
 
-	flushes  int
-	awaited  []int64
-	nextFsn  int64
-	closed   bool
-	closeErr error
+	flushes       int
+	awaited       []int64
+	awaitDeadline []time.Time
+	nextFsn       int64
+	closed        bool
+	closeErr      error
+	events        []string
 }
 
 func (s *recordingSender) Table(name string) qdb.LineSender {
@@ -86,13 +88,17 @@ func (s *recordingSender) FlushAndGetSequence(_ context.Context) (int64, error) 
 	return s.nextFsn, nil
 }
 
-func (s *recordingSender) AwaitAckedFsn(_ context.Context, target int64) error {
+func (s *recordingSender) AwaitAckedFsn(ctx context.Context, target int64) error {
 	s.awaited = append(s.awaited, target)
+	deadline, _ := ctx.Deadline()
+	s.awaitDeadline = append(s.awaitDeadline, deadline)
+	s.events = append(s.events, fmt.Sprintf("await:%d", target))
 	return nil
 }
 
 func (s *recordingSender) Close(_ context.Context) error {
 	s.closed = true
+	s.events = append(s.events, "close")
 	return s.closeErr
 }
 
@@ -326,6 +332,98 @@ func TestQwpProcessBatchNoLoad(t *testing.T) {
 	}
 	if len(s.rows) != 0 || s.flushes != 0 {
 		t.Errorf("nothing should have been sent with doLoad=false: %d rows, %d flushes", len(s.rows), s.flushes)
+	}
+}
+
+func TestILPHTTPConfIgnoresQwpOverride(t *testing.T) {
+	oldConf, oldAddr, oldTLS := qwpConfString, questdbILPHTTPAddr, useTLS
+	defer func() {
+		qwpConfString, questdbILPHTTPAddr, useTLS = oldConf, oldAddr, oldTLS
+	}()
+
+	qwpConfString = "ws::addr=qwp.example:9000;"
+	questdbILPHTTPAddr = "http.example:9000"
+	for _, tc := range []struct {
+		tls  bool
+		want string
+	}{
+		{tls: false, want: "http::addr=http.example:9000;auto_flush=off;"},
+		{tls: true, want: "https::addr=http.example:9000;auto_flush=off;tls_verify=unsafe_off;"},
+	} {
+		useTLS = tc.tls
+		if got := ilpHTTPConf(); got != tc.want {
+			t.Errorf("ilpHTTPConf() = %q, want %q", got, tc.want)
+		}
+	}
+}
+
+func TestQwpCloseAwaitsLastPublishedFsnBeforeSenderClose(t *testing.T) {
+	oldTimeout, oldConf, oldAwait := qwpCloseTimeoutMs, qwpConfString, awaitAck
+	defer func() {
+		qwpCloseTimeoutMs, qwpConfString, awaitAck = oldTimeout, oldConf, oldAwait
+	}()
+	awaitAck = false
+
+	for _, tc := range []struct {
+		name      string
+		conf      string
+		timeoutMs uint
+	}{
+		{name: "default config", timeoutMs: 60000},
+		{name: "custom config cannot disable barrier", conf: "ws::addr=other:9000;close_flush_timeout_millis=0;", timeoutMs: 25},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			qwpConfString, qwpCloseTimeoutMs = tc.conf, tc.timeoutMs
+			p, s := newTestQwpProcessor()
+			if err := p.flush(); err != nil {
+				t.Fatal(err)
+			}
+			if err := p.flush(); err != nil {
+				t.Fatal(err)
+			}
+
+			before := time.Now()
+			if err := p.closeSender(); err != nil {
+				t.Fatalf("closeSender: %v", err)
+			}
+			if got, want := s.events, []string{"await:2", "close"}; fmt.Sprint(got) != fmt.Sprint(want) {
+				t.Fatalf("events = %v, want %v", got, want)
+			}
+			if len(s.awaitDeadline) != 1 || s.awaitDeadline[0].IsZero() {
+				t.Fatalf("await deadline = %v, want one bounded deadline", s.awaitDeadline)
+			}
+			remaining := s.awaitDeadline[0].Sub(before)
+			want := time.Duration(tc.timeoutMs) * time.Millisecond
+			if remaining <= 0 || remaining > want+10*time.Millisecond {
+				t.Errorf("deadline remaining = %v, want approximately %v", remaining, want)
+			}
+		})
+	}
+}
+
+func TestQwpZeroCloseTimeoutIsRejectedAndCannotSkipAckSilently(t *testing.T) {
+	if err := validateQwpAckTimeout(protocolQWIP, 0); err == nil {
+		t.Fatal("validateQwpAckTimeout(qwip, 0) succeeded")
+	}
+	if err := validateQwpAckTimeout(protocolILPHTTP, 0); err != nil {
+		t.Fatalf("ILP/HTTP should not require a QWIP ack timeout: %v", err)
+	}
+
+	oldTimeout := qwpCloseTimeoutMs
+	defer func() { qwpCloseTimeoutMs = oldTimeout }()
+	qwpCloseTimeoutMs = 0
+	p, s := newTestQwpProcessor()
+	if err := p.flush(); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.closeSender(); err == nil {
+		t.Fatal("closeSender with zero timeout succeeded")
+	}
+	if len(s.awaited) != 0 {
+		t.Errorf("zero-timeout close unexpectedly awaited with an unbounded context: %v", s.awaited)
+	}
+	if !s.closed {
+		t.Error("sender resources were not closed after zero-timeout error")
 	}
 }
 

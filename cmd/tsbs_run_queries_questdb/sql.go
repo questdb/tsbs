@@ -20,8 +20,10 @@ import (
 // only an HTTP path with the SQL in its query string; those return no
 // parameters.
 //
-// Every transport shares this, so the server sees the same statement and
-// the same bind values whichever one runs the benchmark.
+// Pgwire and QWEP share this scalar-bind path. The legacy HTTP transport
+// sends hq.Path, where generated scalar values are literalized instead. The
+// generated queries are semantically equivalent across all three transports,
+// but their SQL text and bind mechanism are not identical.
 func sqlFromQuery(hq *query.HTTP) (string, []interface{}, error) {
 	if len(hq.Body) > 0 && len(hq.RawQuery) > 0 {
 		return inlineArrayParams(string(hq.RawQuery), hq.Body)

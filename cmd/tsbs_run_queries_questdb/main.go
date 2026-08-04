@@ -9,6 +9,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -198,13 +199,15 @@ func (p *processor) ProcessQuery(q query.Query, _ bool) ([]*query.Stat, error) {
 	return []*query.Stat{stat}, nil
 }
 
-func (p *processor) Close() {
+func (p *processor) Close() error {
+	var pgErr, qwpErr error
 	if p.conn != nil {
-		p.conn.Close(p.ctx)
+		pgErr = p.conn.Close(p.ctx)
 	}
 	if p.qwpClient != nil {
-		p.qwpClient.Close()
+		qwpErr = p.qwpClient.Close()
 	}
+	return errors.Join(pgErr, qwpErr)
 }
 
 // processQueryPgx runs a query via native pgx v5, using bind variables

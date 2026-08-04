@@ -80,11 +80,12 @@ The three differ, which matters when quoting a rate:
 - **`ilp-http`** is request/response: a successful flush means the server
   processed that batch.
 - **`qwip`** publishes each batch to the sender's cursor engine and a background
-  goroutine delivers it, so a flush means "published", not "committed". The
-  loader closes its senders at the end of the run, and a clean close drains and
-  waits for outstanding acknowledgements, so the final row count for a
-  successful QWIP run is server-confirmed. Use `--qwp-await-ack` if every
-  intermediate report must be acknowledged too; that serialises the pipeline.
+  goroutine delivers it, so a flush means "published", not "committed". At the
+  end of the run the loader explicitly awaits each worker's last published FSN
+  with a bounded context before closing its sender. A successful QWIP run is
+  therefore server-confirmed independently of the client's close configuration.
+  Use `--qwp-await-ack` if every intermediate report must be acknowledged too;
+  that serialises the pipeline.
 
 Whichever you use, confirming the row count from the server afterwards is the
 only measurement that is comparable across all three.
@@ -103,10 +104,12 @@ with `--query-protocol`:
 | `http` | REST `/exec`, JSON results | 9000 | The original TSBS path. `--use-http` still selects it |
 | `qwep` | QuestDB Wire Execution Protocol, columnar result batches | 9000 | Uses the main HTTP port |
 
-All three run the identical SQL with the identical bind parameters, so the
-numbers are comparable: the only difference is how the statement is sent and how
-the rows come back. Query files are protocol-independent, so one file set feeds
-all three, and the choice can be changed between runs without regenerating.
+All three run semantically equivalent generated queries. The legacy HTTP path
+sends SQL with scalar values literalized, while pgwire and QWEP share the same
+parameterized SQL and scalar binds (with generated array parameters inlined).
+This can produce different parse or planning costs in addition to the transport
+and result-format differences. Query files remain protocol-independent, so one
+file set feeds all three without regeneration.
 
 ```bash
 ./tsbs_run_queries_questdb --file /tmp/queries_questdb --query-protocol qwep
@@ -174,11 +177,10 @@ with them.
 
 **`--qwp-close-timeout-ms`** (type: `uint`, default: `60000`)
 
-How long `Close` waits for the server to acknowledge outstanding batches. Close
-is the loader's acknowledgement barrier, so this bounds the wait for the last
-batches of a run. The client's own default is 5 seconds, which is not enough for
-a large final flush: if it expires, the loader reports the unacknowledged
-batches and exits non-zero rather than claiming success.
+How long the loader explicitly waits for each worker's last published FSN before
+closing the sender. The value must be greater than zero. This benchmark-level
+acknowledgement barrier also applies when `--qwp-conf` supplies a custom client
+close configuration; a timeout reports failure rather than claiming success.
 
 **`--qwp-sf-dir`** (type: `string`, default: empty)
 
@@ -189,8 +191,10 @@ is not part of the benchmark, and report durable-ingest runs as a separate mode.
 **`--qwp-conf`** (type: `string`, default: empty)
 
 Full QWIP client configuration string, for example
-`ws::addr=host:9000;auto_flush=off;`. Overrides every other QWIP connection flag,
-so any client option can be set even when it has no dedicated flag.
+`ws::addr=host:9000;auto_flush=off;`. Overrides the QWIP client connection flags,
+so any client option can be set even when it has no dedicated flag. The loader
+still uses `--qwp-close-timeout-ms` for its explicit final-FSN acknowledgement
+barrier.
 
 **`--ilp-bind-to`** (type: `string`, default `127.0.0.1:9009`)
 

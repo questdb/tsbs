@@ -41,6 +41,19 @@ func validateIngestionProtocol(value string) error {
 	}
 }
 
+func validateQwpAckTimeout(selectedProtocol string, timeoutMs uint) error {
+	if selectedProtocol != protocolQWIP {
+		return nil
+	}
+	if timeoutMs == 0 {
+		return fmt.Errorf("--qwp-close-timeout-ms must be greater than zero for --protocol=%s", protocolQWIP)
+	}
+	if uint64(timeoutMs) > uint64((time.Duration(1<<63-1))/time.Millisecond) {
+		return fmt.Errorf("--qwp-close-timeout-ms is too large")
+	}
+	return nil
+}
+
 // Program option vars:
 var (
 	protocol           string
@@ -134,6 +147,9 @@ func init() {
 	awaitAck = viper.GetBool("qwp-await-ack")
 	nanoTimestamps = viper.GetBool("qwp-nano-timestamps")
 	qwpCloseTimeoutMs = viper.GetUint("qwp-close-timeout-ms")
+	if err := validateQwpAckTimeout(protocol, qwpCloseTimeoutMs); err != nil {
+		panic(err)
+	}
 	useTLS = viper.GetBool("tls")
 	authTokenId = viper.GetString("auth-id")
 	authToken = viper.GetString("auth-token")
@@ -188,10 +204,6 @@ func senderConf(numWorker int) string {
 // than the dedicated ILP/TCP pools, whose size varies by build and
 // configuration, which makes it the steadier line protocol baseline.
 func ilpHTTPConf() string {
-	if qwpConfString != "" {
-		return qwpConfString
-	}
-
 	var sb strings.Builder
 	if useTLS {
 		sb.WriteString("https::")
