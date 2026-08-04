@@ -33,6 +33,7 @@ var (
 	authToken         string // InfluxDB v2
 	bucketId          string // InfluxDB v2
 	orgId             string // InfluxDB v2
+	noSync            bool   // InfluxDB v3
 )
 
 // Global vars
@@ -80,6 +81,7 @@ func init() {
 	orgId = viper.GetString("org")
 	backoff = viper.GetDuration("backoff")
 	useGzip = viper.GetBool("gzip")
+	noSync = viper.GetBool("no-sync")
 
 	if _, ok := consistencyChoices[consistency]; !ok {
 		log.Fatalf("invalid consistency settings")
@@ -89,6 +91,9 @@ func init() {
 		log.Println("Using Authorization header in benchmark")
 	} else {
 		log.Println("Given no Authorization header was provided will not send it in benchmark")
+	}
+	if noSync {
+		log.Println("Using no_sync=true (fsync disabled for faster writes)")
 	}
 
 	daemonURLs = strings.Split(csvDaemonURLs, ",")

@@ -32,6 +32,7 @@ type HTTPClientDoOptions struct {
 	PrettyPrintResponses bool
 	chunkSize            uint64
 	database             string
+	influxVersion        string // "v1", "v2", or "v3"
 }
 
 var httpClientOnce = sync.Once{}
@@ -68,16 +69,49 @@ func (w *HTTPClient) Do(q *query.HTTP, opts *HTTPClientDoOptions) (lag float64, 
 	// populate uri from the reusable byte slice:
 	w.uri = w.uri[:0]
 	w.uri = append(w.uri, w.Host...)
-	//w.uri = append(w.uri, bytesSlash...)
-	w.uri = append(w.uri, q.Path...)
-	w.uri = append(w.uri, []byte("&db="+url.QueryEscape(opts.database))...)
-	if opts.chunkSize > 0 {
-		s := fmt.Sprintf("&chunked=true&chunk_size=%d", opts.chunkSize)
-		w.uri = append(w.uri, []byte(s)...)
+
+	// Handle different InfluxDB API versions
+	switch opts.influxVersion {
+	case "v3":
+		// InfluxDB v3 uses /api/v3/query_influxql endpoint
+		// Extract the query from q.Path (which contains /query?q=...)
+		queryStr := string(q.Path)
+		// q.Path is like "/query?q=SELECT..."
+		// We need to transform to "/api/v3/query_influxql?q=SELECT...&db=..."
+		if len(queryStr) > 7 && queryStr[:7] == "/query?" {
+			w.uri = append(w.uri, []byte("/api/v3/query_influxql?")...)
+			w.uri = append(w.uri, []byte(queryStr[7:])...) // skip "/query?"
+		} else {
+			w.uri = append(w.uri, q.Path...)
+		}
+		w.uri = append(w.uri, []byte("&db="+url.QueryEscape(opts.database))...)
+		w.uri = append(w.uri, []byte("&format=json")...)
+	case "v2":
+		// InfluxDB v2 - keep original path but may need different handling
+		// Note: v2 primarily uses Flux, but supports InfluxQL via /query endpoint
+		w.uri = append(w.uri, q.Path...)
+		w.uri = append(w.uri, []byte("&db="+url.QueryEscape(opts.database))...)
+		if opts.chunkSize > 0 {
+			s := fmt.Sprintf("&chunked=true&chunk_size=%d", opts.chunkSize)
+			w.uri = append(w.uri, []byte(s)...)
+		}
+	default: // "v1"
+		// InfluxDB v1 - original behavior
+		w.uri = append(w.uri, q.Path...)
+		w.uri = append(w.uri, []byte("&db="+url.QueryEscape(opts.database))...)
+		if opts.chunkSize > 0 {
+			s := fmt.Sprintf("&chunked=true&chunk_size=%d", opts.chunkSize)
+			w.uri = append(w.uri, []byte(s)...)
+		}
 	}
 
 	// populate a request with data from the Query:
-	req, err := http.NewRequest(string(q.Method), string(w.uri), nil)
+	// For v3, force GET method as the v3 API uses GET for query_influxql
+	method := string(q.Method)
+	if opts.influxVersion == "v3" {
+		method = "GET"
+	}
+	req, err := http.NewRequest(method, string(w.uri), nil)
 	if err != nil {
 		panic(err)
 	}
