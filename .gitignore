@@ -11,3 +11,5 @@
 
 # Compiled binaries
 tsbs_*
+# ... but not the command source directories, whose names start the same way
+!cmd/tsbs_*/

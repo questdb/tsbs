@@ -46,6 +46,8 @@ func GetTarget(format string) targets.ImplementedTarget {
 		return timestream.NewTarget()
 	case constants.FormatQuestDB:
 		return questdb.NewTarget()
+	case constants.FormatQuestDBQWP:
+		return questdb.NewQwpTarget()
 	}
 
 	supportedFormatsStr := strings.Join(constants.SupportedFormats(), ",")

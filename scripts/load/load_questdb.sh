@@ -16,6 +16,8 @@ DATA_FILE_NAME=${DATA_FILE_NAME:-influx-data.gz}
 DATABASE_PORT=${DATABASE_PORT:-9000}
 DATABASE_HEALTH_PORT=${DATABASE_HEALTH_PORT:-9003}
 ILP_PORT=${ILP_PORT:-9009}
+# Ingestion protocol: ilp, ilp-http, or qwip (QuestDB Wire Ingestion Protocol)
+PROTOCOL=${PROTOCOL:-ilp}
 
 EXE_DIR=${EXE_DIR:-$(dirname $0)}
 source ${EXE_DIR}/load_common.sh
@@ -33,4 +35,6 @@ cat ${DATA_FILE} | gunzip | $EXE_FILE_NAME \
                                 --batch-size=${BATCH_SIZE} \
                                 --reporting-period=${REPORTING_PERIOD} \
                                 --url=http://${DATABASE_HOST}:${DATABASE_PORT} \
+                                --protocol=${PROTOCOL} \
+                                --qwp-addr ${DATABASE_HOST}:${DATABASE_PORT} \
                                 --ilp-bind-to ${DATABASE_HOST}:${ILP_PORT}
