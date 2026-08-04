@@ -4,23 +4,54 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"strings"
+	"os"
 	"time"
 
 	"github.com/InfluxCommunity/influxdb3-go/v2/influxdb3"
 	"github.com/questdb/tsbs/pkg/query"
 )
 
-// FlightClient is a client for querying InfluxDB v3 via Arrow Flight
+type rawFlightReader interface {
+	Next() bool
+	Err() error
+	Release()
+}
+
+type flightQueryClient interface {
+	QueryWithOptions(context.Context, *influxdb3.QueryOptions, string) (rawFlightReader, error)
+	Close() error
+}
+
+type influxDB3ClientAdapter struct {
+	client *influxdb3.Client
+}
+
+func (c *influxDB3ClientAdapter) QueryWithOptions(ctx context.Context, options *influxdb3.QueryOptions, queryText string) (rawFlightReader, error) {
+	iterator, err := c.client.QueryWithOptions(ctx, options, queryText)
+	if err != nil {
+		return nil, err
+	}
+	if iterator == nil {
+		return nil, fmt.Errorf("query returned a nil iterator")
+	}
+	reader := iterator.Raw()
+	if reader == nil {
+		return nil, fmt.Errorf("query returned a nil raw reader")
+	}
+	return reader, nil
+}
+
+func (c *influxDB3ClientAdapter) Close() error { return c.client.Close() }
+
+// FlightClient is a client for querying InfluxDB v3 via Arrow Flight.
 type FlightClient struct {
-	client   *influxdb3.Client
+	client   flightQueryClient
 	database string
 }
 
-// NewFlightClient creates a new Flight client for InfluxDB v3
+// NewFlightClient creates a new Flight client for InfluxDB v3.
 func NewFlightClient(hostURL string, database string, authToken string) (*FlightClient, error) {
-	// influxdb3-go requires a token even when server runs without auth
-	// Use a placeholder token if none provided
+	// influxdb3-go requires a token even when server runs without auth.
 	token := authToken
 	if token == "" {
 		token = "unused"
@@ -35,12 +66,12 @@ func NewFlightClient(hostURL string, database string, authToken string) (*Flight
 	}
 
 	return &FlightClient{
-		client:   client,
+		client:   &influxDB3ClientAdapter{client: client},
 		database: database,
 	}, nil
 }
 
-// Close closes the Flight client
+// Close closes the Flight client.
 func (c *FlightClient) Close() error {
 	if c.client != nil {
 		return c.client.Close()
@@ -48,53 +79,52 @@ func (c *FlightClient) Close() error {
 	return nil
 }
 
-// Do executes a query and returns latency in milliseconds
+// Do executes a query and returns latency in milliseconds.
 func (c *FlightClient) Do(q *query.HTTP, opts *HTTPClientDoOptions) (lag float64, err error) {
-	// Extract InfluxQL query from the path
-	// Path format: /query?q=SELECT...
-	queryStr := string(q.Path)
-	if strings.HasPrefix(queryStr, "/query?q=") {
-		queryStr = queryStr[9:] // Skip "/query?q="
-	} else if strings.HasPrefix(queryStr, "/query?") {
-		// Handle other formats
-		parts := strings.SplitN(queryStr[7:], "&", 2)
-		for _, part := range parts {
-			if strings.HasPrefix(part, "q=") {
-				queryStr = part[2:]
-				break
-			}
-		}
+	parsed, err := url.ParseRequestURI(string(q.Path))
+	if err != nil || parsed.Path != "/query" {
+		return 0, fmt.Errorf("invalid query path %q", q.Path)
 	}
-
-	// URL decode the query
-	queryStr, err = url.QueryUnescape(queryStr)
+	values, err := url.ParseQuery(parsed.RawQuery)
 	if err != nil {
-		return 0, fmt.Errorf("failed to unescape query: %w", err)
+		return 0, fmt.Errorf("invalid query parameters: %w", err)
+	}
+	queries := values["q"]
+	if len(queries) != 1 {
+		return 0, fmt.Errorf("query path must contain exactly one q parameter")
 	}
 
-	ctx := context.Background()
-
-	// Execute query and measure latency
 	start := time.Now()
-
-	// Use QueryWithOptions for InfluxQL
-	iterator, err := c.client.QueryWithOptions(ctx, &influxdb3.QueryOptions{
+	reader, err := c.client.QueryWithOptions(context.Background(), &influxdb3.QueryOptions{
 		Database:  c.database,
 		QueryType: influxdb3.InfluxQL,
-	}, queryStr)
+	}, queries[0])
 	if err != nil {
 		return 0, fmt.Errorf("query failed: %w", err)
 	}
-
-	// Consume all results to ensure we measure full query time
-	for iterator.Next() {
-		_ = iterator.Value()
+	if reader == nil {
+		return 0, fmt.Errorf("query returned a nil raw reader")
 	}
-	if err := iterator.Err(); err != nil {
+	defer reader.Release()
+
+	for reader.Next() {
+	}
+	if err := reader.Err(); err != nil {
 		return 0, fmt.Errorf("error reading results: %w", err)
 	}
+	lag = float64(time.Since(start).Nanoseconds()) / 1e6
 
-	lag = float64(time.Since(start).Nanoseconds()) / 1e6 // milliseconds
+	if opts != nil {
+		switch opts.Debug {
+		case 1:
+			fmt.Fprintf(os.Stderr, "debug: %s in %7.2fms\n", q.HumanLabel, lag)
+		case 2:
+			fmt.Fprintf(os.Stderr, "debug: %s in %7.2fms -- %s\n", q.HumanLabel, lag, q.HumanDescription)
+		case 3:
+			fmt.Fprintf(os.Stderr, "debug: %s in %7.2fms -- %s\n", q.HumanLabel, lag, q.HumanDescription)
+			fmt.Fprintf(os.Stderr, "debug:   request: %s\n", q.String())
+		}
+	}
 
 	return lag, nil
 }

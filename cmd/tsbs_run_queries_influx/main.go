@@ -59,6 +59,9 @@ func init() {
 	if err := validateInfluxVersion(influxVersion); err != nil {
 		log.Fatal(err)
 	}
+	if err := validateQueryOptions(influxVersion, chunkSize, config.PrintResponses, config.Debug); err != nil {
+		log.Fatal(err)
+	}
 	log.Printf("Using InfluxDB %s API", influxVersion)
 	if authToken != "" {
 		log.Println("Using Authorization header in benchmark")
@@ -82,6 +85,22 @@ func validateInfluxVersion(version string) error {
 	}
 }
 
+func validateQueryOptions(version string, chunkSize uint64, printResponses bool, debug int) error {
+	if version != "v3" {
+		return nil
+	}
+	if chunkSize != 0 {
+		return fmt.Errorf("--chunk-response-size is not supported for InfluxDB v3 Arrow queries")
+	}
+	if printResponses {
+		return fmt.Errorf("--print-responses is not supported for InfluxDB v3 Arrow queries")
+	}
+	if debug == 4 {
+		return fmt.Errorf("debug level 4 response-body output is not supported for InfluxDB v3 Arrow queries")
+	}
+	return nil
+}
+
 func main() {
 	runner.Run(&query.HTTPPool, newProcessor)
 }
@@ -92,6 +111,8 @@ type processor struct {
 	opts         *HTTPClientDoOptions
 }
 
+var newFlightClient = NewFlightClient
+
 func newProcessor() query.Processor { return &processor{} }
 
 func (p *processor) Init(workerNumber int) {
@@ -100,14 +121,13 @@ func (p *processor) Init(workerNumber int) {
 		PrettyPrintResponses: runner.DoPrintResponses(),
 		chunkSize:            chunkSize,
 		database:             runner.DatabaseName(),
-		influxVersion:        influxVersion,
 	}
 	url := daemonUrls[workerNumber%len(daemonUrls)]
 
 	if influxVersion == "v3" {
 		// Use Flight client for v3
 		var err error
-		p.flightClient, err = NewFlightClient(url, runner.DatabaseName(), authToken)
+		p.flightClient, err = newFlightClient(url, runner.DatabaseName(), authToken)
 		if err != nil {
 			log.Fatalf("Failed to create Flight client: %v", err)
 		}

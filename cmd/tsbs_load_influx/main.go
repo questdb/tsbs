@@ -93,7 +93,7 @@ func init() {
 		log.Println("Given no Authorization header was provided will not send it in benchmark")
 	}
 	if noSync {
-		log.Println("Using no_sync=true (fsync disabled for faster writes)")
+		log.Println("Using no_sync=true (acknowledging writes without waiting for WAL persistence)")
 	}
 
 	daemonURLs = strings.Split(csvDaemonURLs, ",")
