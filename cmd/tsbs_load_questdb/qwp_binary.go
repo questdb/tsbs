@@ -294,7 +294,14 @@ func (p *qwpProcessor) writeBinaryRow(s *qwpSchema, row []byte, dict []string) e
 		if id >= uint64(len(dict)) {
 			return errors.New("QWP row references an undefined string")
 		}
-		sender = sender.Symbol(key, dict[id])
+		// The tag is a SYMBOL by default. With --qwp-tags-as-varchar we send
+		// it as a VARCHAR instead, so no per-frame symbol dictionary is
+		// shipped; the server can still store the column as SYMBOL.
+		if tagsAsVarchar {
+			sender = sender.StringColumn(key, dict[id])
+		} else {
+			sender = sender.Symbol(key, dict[id])
+		}
 	}
 
 	for i, key := range s.fieldKeys {

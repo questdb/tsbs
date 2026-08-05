@@ -64,7 +64,7 @@ require (
 	github.com/magiconair/properties v1.8.7 // indirect
 	github.com/mitchellh/mapstructure v1.2.2 // indirect
 	github.com/pelletier/go-toml v1.4.0 // indirect
-	github.com/questdb/go-questdb-client/v4 v4.2.1-0.20260707155902-afc74c3d3090
+	github.com/questdb/go-questdb-client/v4 v4.2.1-0.20260730155217-4f2723e2d5cb
 	github.com/rogpeppe/go-internal v1.6.1 // indirect
 	github.com/sergi/go-diff v1.0.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect

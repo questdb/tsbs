@@ -261,7 +261,10 @@ func newQwpReplayEncoder(ctx context.Context, path string) (*qwpReplayEncoder, e
 		qdb.WithAutoFlushRows(0),
 		qdb.WithAutoFlushBytes(0),
 		qdb.WithAutoFlushInterval(0),
-		qdb.WithInFlightWindow(1),
+		// The pre-encode encoder flushes and awaits the fake dump endpoint's
+		// ACK once per batch, so in-flight is already bounded to one frame.
+		// (The client's old WithInFlightWindow option was removed in the
+		// cursor-mode refactor; this loop never needed it.)
 		qdb.WithCloseFlushTimeout(2*time.Minute),
 	)
 	if err != nil {

@@ -45,6 +45,7 @@ var (
 	nanoTimestamps     bool
 	qwpCloseTimeoutMs  uint
 	qwpPreencodeReplay bool
+	tagsAsVarchar      bool
 	useTLS             bool
 	authTokenId        string
 	authToken          string
@@ -97,6 +98,7 @@ func init() {
 	pflag.CommandLine.Bool("qwp-nano-timestamps", false, "Send nanosecond designated timestamps over QWP. Off by default so that the table matches the one the ILP path creates, which is microsecond resolution")
 	pflag.CommandLine.Uint("qwp-close-timeout-ms", 60000, "How long Close waits for the server to acknowledge outstanding batches. Close is the loader's ack barrier, so this bounds the wait for the last batches of a run")
 	pflag.CommandLine.Bool("qwp-preencode-replay", false, "Pre-encode binary TSBS input into QWP WebSocket frames outside the timed interval, then replay those frames. This measures server ingestion without row-builder CPU")
+	pflag.CommandLine.Bool("qwp-tags-as-varchar", false, "Send tag columns as VARCHAR strings over QWP instead of SYMBOL, so no per-frame symbol dictionary is shipped. The server table can still store them as SYMBOL. Trades larger low-cardinality frames for no dictionary growth at high cardinality")
 	target.TargetSpecificFlags("", pflag.CommandLine)
 	pflag.Parse()
 
@@ -129,6 +131,7 @@ func init() {
 	nanoTimestamps = viper.GetBool("qwp-nano-timestamps")
 	qwpCloseTimeoutMs = viper.GetUint("qwp-close-timeout-ms")
 	qwpPreencodeReplay = viper.GetBool("qwp-preencode-replay")
+	tagsAsVarchar = viper.GetBool("qwp-tags-as-varchar")
 	useTLS = viper.GetBool("tls")
 	authTokenId = viper.GetString("auth-id")
 	authToken = viper.GetString("auth-token")
