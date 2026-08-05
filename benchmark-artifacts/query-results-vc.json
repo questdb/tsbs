@@ -1,0 +1,386 @@
+[
+  {
+    "transport": "pg",
+    "query": "cpu-max-all-1",
+    "mean_ms": 3.53,
+    "wall_s": 3.553696,
+    "qps": 281.39717072028674,
+    "ok": true
+  },
+  {
+    "transport": "pg",
+    "query": "cpu-max-all-8",
+    "mean_ms": 4.87,
+    "wall_s": 4.90514,
+    "qps": 203.8677795129191,
+    "ok": true
+  },
+  {
+    "transport": "pg",
+    "query": "cpu-max-all-32-24",
+    "mean_ms": 19.82,
+    "wall_s": 19.884465,
+    "qps": 50.29051573678246,
+    "ok": true
+  },
+  {
+    "transport": "pg",
+    "query": "single-groupby-1-1-1",
+    "mean_ms": 0.81,
+    "wall_s": 0.860238,
+    "qps": 1162.4689911396615,
+    "ok": true
+  },
+  {
+    "transport": "pg",
+    "query": "single-groupby-1-1-12",
+    "mean_ms": 2.8,
+    "wall_s": 2.834326,
+    "qps": 352.81756579871194,
+    "ok": true
+  },
+  {
+    "transport": "pg",
+    "query": "single-groupby-1-8-1",
+    "mean_ms": 1.04,
+    "wall_s": 1.054177,
+    "qps": 948.6073021892909,
+    "ok": true
+  },
+  {
+    "transport": "pg",
+    "query": "single-groupby-5-1-1",
+    "mean_ms": 0.8,
+    "wall_s": 0.834469,
+    "qps": 1198.3668656355119,
+    "ok": true
+  },
+  {
+    "transport": "pg",
+    "query": "single-groupby-5-1-12",
+    "mean_ms": 2.81,
+    "wall_s": 2.838692,
+    "qps": 352.2749209847352,
+    "ok": true
+  },
+  {
+    "transport": "pg",
+    "query": "single-groupby-5-8-1",
+    "mean_ms": 1.2,
+    "wall_s": 1.222699,
+    "qps": 817.8627773474911,
+    "ok": true
+  },
+  {
+    "transport": "pg",
+    "query": "double-groupby-1",
+    "mean_ms": 34.64,
+    "wall_s": 34.710589,
+    "qps": 28.8096522937136,
+    "ok": true
+  },
+  {
+    "transport": "pg",
+    "query": "double-groupby-5",
+    "mean_ms": 48.52,
+    "wall_s": 48.552836,
+    "qps": 20.596119246257828,
+    "ok": true
+  },
+  {
+    "transport": "pg",
+    "query": "double-groupby-all",
+    "mean_ms": 64.14,
+    "wall_s": 64.167608,
+    "qps": 15.584186962368927,
+    "ok": true
+  },
+  {
+    "transport": "pg",
+    "query": "high-cpu-1",
+    "mean_ms": 4.98,
+    "wall_s": 5.010162,
+    "qps": 199.594344454331,
+    "ok": true
+  },
+  {
+    "transport": "pg",
+    "query": "high-cpu-all",
+    "mean_ms": 504.84,
+    "wall_s": 504.93181,
+    "qps": 1.9804654414622838,
+    "ok": true
+  },
+  {
+    "transport": "pg",
+    "query": "lastpoint",
+    "mean_ms": 1.63,
+    "wall_s": 1.638346,
+    "qps": 610.3716797306552,
+    "ok": true
+  },
+  {
+    "transport": "pg",
+    "query": "groupby-orderby-limit",
+    "mean_ms": 4.26,
+    "wall_s": 4.286504,
+    "qps": 233.29034569896587,
+    "ok": true
+  },
+  {
+    "transport": "http",
+    "query": "cpu-max-all-1",
+    "mean_ms": 2.47,
+    "wall_s": 2.483075,
+    "qps": 402.72645812148244,
+    "ok": true
+  },
+  {
+    "transport": "http",
+    "query": "cpu-max-all-8",
+    "mean_ms": 3.92,
+    "wall_s": 3.937,
+    "qps": 254.00050800101602,
+    "ok": true
+  },
+  {
+    "transport": "http",
+    "query": "cpu-max-all-32-24",
+    "mean_ms": 17.12,
+    "wall_s": 17.139799,
+    "qps": 58.343741370596,
+    "ok": true
+  },
+  {
+    "transport": "http",
+    "query": "single-groupby-1-1-1",
+    "mean_ms": 0.81,
+    "wall_s": 0.815785,
+    "qps": 1225.813173814179,
+    "ok": true
+  },
+  {
+    "transport": "http",
+    "query": "single-groupby-1-1-12",
+    "mean_ms": 3.09,
+    "wall_s": 3.097899,
+    "qps": 322.7994198648826,
+    "ok": true
+  },
+  {
+    "transport": "http",
+    "query": "single-groupby-1-8-1",
+    "mean_ms": 0.88,
+    "wall_s": 0.880255,
+    "qps": 1136.034444564359,
+    "ok": true
+  },
+  {
+    "transport": "http",
+    "query": "single-groupby-5-1-1",
+    "mean_ms": 0.73,
+    "wall_s": 0.735162,
+    "qps": 1360.244408715358,
+    "ok": true
+  },
+  {
+    "transport": "http",
+    "query": "single-groupby-5-1-12",
+    "mean_ms": 3.06,
+    "wall_s": 3.068026,
+    "qps": 325.9424789750804,
+    "ok": true
+  },
+  {
+    "transport": "http",
+    "query": "single-groupby-5-8-1",
+    "mean_ms": 1.07,
+    "wall_s": 1.081708,
+    "qps": 924.4639033824286,
+    "ok": true
+  },
+  {
+    "transport": "http",
+    "query": "double-groupby-1",
+    "mean_ms": 59.76,
+    "wall_s": 59.78002,
+    "qps": 16.72799707996083,
+    "ok": true
+  },
+  {
+    "transport": "http",
+    "query": "double-groupby-5",
+    "mean_ms": 115.77,
+    "wall_s": 115.789741,
+    "qps": 8.636343698186526,
+    "ok": true
+  },
+  {
+    "transport": "http",
+    "query": "double-groupby-all",
+    "mean_ms": 175.56,
+    "wall_s": 175.588886,
+    "qps": 5.69512127322227,
+    "ok": true
+  },
+  {
+    "transport": "http",
+    "query": "high-cpu-1",
+    "mean_ms": 4.76,
+    "wall_s": 4.770416,
+    "qps": 209.62532408075103,
+    "ok": true
+  },
+  {
+    "transport": "http",
+    "query": "high-cpu-all",
+    "mean_ms": 855.99,
+    "wall_s": 856.01761,
+    "qps": 1.1682002663473243,
+    "ok": true
+  },
+  {
+    "transport": "http",
+    "query": "lastpoint",
+    "mean_ms": 2.03,
+    "wall_s": 2.030762,
+    "qps": 492.4259957592273,
+    "ok": true
+  },
+  {
+    "transport": "http",
+    "query": "groupby-orderby-limit",
+    "mean_ms": 18.21,
+    "wall_s": 18.222565,
+    "qps": 54.87701649026907,
+    "ok": true
+  },
+  {
+    "transport": "qwp",
+    "query": "cpu-max-all-1",
+    "mean_ms": 2.35,
+    "wall_s": 2.371279,
+    "qps": 421.713345414015,
+    "ok": true
+  },
+  {
+    "transport": "qwp",
+    "query": "cpu-max-all-8",
+    "mean_ms": 3.59,
+    "wall_s": 3.616267,
+    "qps": 276.52825413610225,
+    "ok": true
+  },
+  {
+    "transport": "qwp",
+    "query": "cpu-max-all-32-24",
+    "mean_ms": 16.45,
+    "wall_s": 16.49652,
+    "qps": 60.61884567169318,
+    "ok": true
+  },
+  {
+    "transport": "qwp",
+    "query": "single-groupby-1-1-1",
+    "mean_ms": 0.72,
+    "wall_s": 0.733062,
+    "qps": 1364.141095841825,
+    "ok": true
+  },
+  {
+    "transport": "qwp",
+    "query": "single-groupby-1-1-12",
+    "mean_ms": 2.79,
+    "wall_s": 2.804183,
+    "qps": 356.61010711497784,
+    "ok": true
+  },
+  {
+    "transport": "qwp",
+    "query": "single-groupby-1-8-1",
+    "mean_ms": 1.0,
+    "wall_s": 1.019214,
+    "qps": 981.148218136721,
+    "ok": true
+  },
+  {
+    "transport": "qwp",
+    "query": "single-groupby-5-1-1",
+    "mean_ms": 0.77,
+    "wall_s": 0.782246,
+    "qps": 1278.3702313594445,
+    "ok": true
+  },
+  {
+    "transport": "qwp",
+    "query": "single-groupby-5-1-12",
+    "mean_ms": 3.17,
+    "wall_s": 3.192072,
+    "qps": 313.27614164091534,
+    "ok": true
+  },
+  {
+    "transport": "qwp",
+    "query": "single-groupby-5-8-1",
+    "mean_ms": 1.08,
+    "wall_s": 1.097111,
+    "qps": 911.4847996237391,
+    "ok": true
+  },
+  {
+    "transport": "qwp",
+    "query": "double-groupby-1",
+    "mean_ms": 35.52,
+    "wall_s": 35.530108,
+    "qps": 28.145143831254327,
+    "ok": true
+  },
+  {
+    "transport": "qwp",
+    "query": "double-groupby-5",
+    "mean_ms": 49.65,
+    "wall_s": 49.670403,
+    "qps": 20.132713640354396,
+    "ok": true
+  },
+  {
+    "transport": "qwp",
+    "query": "double-groupby-all",
+    "mean_ms": 69.18,
+    "wall_s": 69.20127,
+    "qps": 14.45060184589098,
+    "ok": true
+  },
+  {
+    "transport": "qwp",
+    "query": "high-cpu-1",
+    "mean_ms": 4.31,
+    "wall_s": 4.336485,
+    "qps": 230.6015125153206,
+    "ok": true
+  },
+  {
+    "transport": "qwp",
+    "query": "high-cpu-all",
+    "mean_ms": 404.9,
+    "wall_s": 404.933783,
+    "qps": 2.469539569139876,
+    "ok": true
+  },
+  {
+    "transport": "qwp",
+    "query": "lastpoint",
+    "mean_ms": 1.17,
+    "wall_s": 1.171719,
+    "qps": 853.4469441905441,
+    "ok": true
+  },
+  {
+    "transport": "qwp",
+    "query": "groupby-orderby-limit",
+    "mean_ms": 4.46,
+    "wall_s": 4.475549,
+    "qps": 223.43627563903334,
+    "ok": true
+  }
+]
