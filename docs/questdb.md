@@ -106,23 +106,26 @@ the contention is not symmetric: the QWP client encodes every row while the ILP
 client writes text it already has, so whichever protocol leaves more cores for
 the server looks faster for a reason that has nothing to do with the wire. To
 compare protocols on one machine, pin the loader and the server to disjoint core
-sets so each protocol sees the same, non-competing budget. On a 32 vCPU box,
-give the server sixteen cores and the loader the other sixteen:
+sets so each protocol sees the same, non-competing budget. Both loaders are
+light on CPU (the ILP loader used ~1.7 cores, and a `--qwp-preencode-replay`
+send is lighter still), so give the client just a couple of cores and the server
+the rest. On a 32 vCPU box, thirty for the server and two for the client:
 
 ```bash
-sudo docker run -d --name questdb --network host --cpuset-cpus=0-15 \
-  -e QDB_SHARED_WORKER_COUNT=15 \
-  -e QDB_LINE_TCP_IO_WORKER_COUNT=15 \
-  -e QDB_LINE_TCP_WRITER_WORKER_COUNT=15 \
+sudo docker run -d --name questdb --network host --cpuset-cpus=0-29 \
+  -e QDB_SHARED_WORKER_COUNT=29 \
+  -e QDB_LINE_TCP_IO_WORKER_COUNT=29 \
+  -e QDB_LINE_TCP_WRITER_WORKER_COUNT=29 \
   questdb/questdb:nightly
 
-taskset -c 16-31 ./tsbs_load_questdb --file /tmp/data_qwp --workers 32
+taskset -c 30-31 ./tsbs_load_questdb --file /tmp/data_qwp --workers 32
 ```
 
 Keep the server's core count the same whether the client is co-located or on its
-own instance. If a co-located server is capped at sixteen cores but the
-networked server is given all thirty-two, the network run is measuring a bigger
-server, not the network, and the two topologies are no longer comparable.
+own instance: give the server the same thirty cores in the networked run too. If
+a co-located server is capped at thirty cores but the networked server is given
+all thirty-two, the network run is measuring a slightly bigger server, not the
+network, and the two topologies are no longer strictly comparable.
 
 ILP/TCP's send rate also flatters it most. Being fire-and-forget, it outruns
 write-ahead log apply by the widest margin: on the release build it sends at
