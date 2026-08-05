@@ -99,6 +99,31 @@ Record the server build and the ILP thread-pool sizes alongside any ILP/TCP
 number, or use `ilp-http`, which is served by the shared pools and needed no
 tuning on either build.
 
+### Co-located comparison: pin the CPUs
+
+When the loader and QuestDB run on one box they contend for the same cores, and
+the contention is not symmetric: the QWP client encodes every row while the ILP
+client writes text it already has, so whichever protocol leaves more cores for
+the server looks faster for a reason that has nothing to do with the wire. To
+compare protocols on one machine, pin the loader and the server to disjoint core
+sets so each protocol sees the same, non-competing budget. On a 32 vCPU box,
+give the server sixteen cores and the loader the other sixteen:
+
+```bash
+sudo docker run -d --name questdb --network host --cpuset-cpus=0-15 \
+  -e QDB_SHARED_WORKER_COUNT=15 \
+  -e QDB_LINE_TCP_IO_WORKER_COUNT=15 \
+  -e QDB_LINE_TCP_WRITER_WORKER_COUNT=15 \
+  questdb/questdb:nightly
+
+taskset -c 16-31 ./tsbs_load_questdb --file /tmp/data_qwp --workers 32
+```
+
+Keep the server's core count the same whether the client is co-located or on its
+own instance. If a co-located server is capped at sixteen cores but the
+networked server is given all thirty-two, the network run is measuring a bigger
+server, not the network, and the two topologies are no longer comparable.
+
 ILP/TCP's send rate also flatters it most. Being fire-and-forget, it outruns
 write-ahead log apply by the widest margin: on the release build it sends at
 9.3-12.5M rows/s but commits at 3.2-3.9M, while HTTP sends at 6.8-6.9M and
@@ -144,7 +169,7 @@ connections:
   --file /tmp/data_qwp \
   --protocol qwp \
   --workers 32 \
-  --batch-size 45000 \
+  --batch-size 10000 \
   --qwp-preencode-replay
 ```
 
@@ -153,6 +178,14 @@ processing, and the final cumulative ACK. Input decoding and QWP encoding are
 reported separately and excluded. This makes the result useful for finding a
 server-side ceiling, but it is not an end-to-end loader or client benchmark;
 report regular QWP results separately.
+
+Keep `--batch-size` small enough that one batch stays under the server's
+~2 MB frame limit. Each batch becomes one QWP frame, and a frame's size grows
+with both the batch size and the per-frame symbol dictionary, so a batch that is
+fine at low cardinality can produce an oversized frame the server rejects at
+high cardinality. 10000 is safe for the `cpu-only` set; batches in the tens of
+thousands overflow the cap. `--qwp-tags-as-varchar` (below) sidesteps the
+dictionary term.
 
 QWP support lives in `github.com/questdb/go-questdb-client/v4` and has not been
 released yet, so `go.mod` tracks the client's `main` branch as a pseudo-version.
@@ -256,6 +289,17 @@ batches and exits non-zero rather than claiming success.
 Pre-encode binary input outside the timed interval and replay the stock
 client's QWP WebSocket frames. This measures the QWP server path without the
 loader's row-building cost. The final cumulative ACK is required.
+
+**`--qwp-tags-as-varchar`** (type: `boolean`, default: `false`)
+
+Send tag columns as VARCHAR strings over QWP instead of SYMBOL, so no per-frame
+symbol dictionary is shipped. The server still stores the columns as SYMBOL when
+the table already exists with SYMBOL columns (pre-create it, or let an earlier
+SYMBOL load create it). At low cardinality each row is larger on the wire; at
+very high cardinality it avoids the per-frame dictionary growth that inflates QWP
+frames as the number of distinct series climbs, keeping frames under the server's
+size limit where symbol encoding would overflow it. Applies to the binary
+`questdb-qwp` path.
 
 **`--qwp-sf-dir`** (type: `string`, default: empty)
 
