@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -81,6 +82,12 @@ func (c *FlightClient) Close() error {
 
 // Do executes a query and returns latency in milliseconds.
 func (c *FlightClient) Do(q *query.HTTP, opts *HTTPClientDoOptions) (lag float64, err error) {
+	if c == nil || c.client == nil {
+		return 0, errors.New("InfluxDB 3 Flight client is nil")
+	}
+	if q == nil {
+		return 0, errors.New("InfluxDB query is nil")
+	}
 	parsed, err := url.ParseRequestURI(string(q.Path))
 	if err != nil || parsed.Path != "/query" {
 		return 0, fmt.Errorf("invalid query path %q", q.Path)
@@ -90,8 +97,8 @@ func (c *FlightClient) Do(q *query.HTTP, opts *HTTPClientDoOptions) (lag float64
 		return 0, fmt.Errorf("invalid query parameters: %w", err)
 	}
 	queries := values["q"]
-	if len(queries) != 1 {
-		return 0, fmt.Errorf("query path must contain exactly one q parameter")
+	if len(queries) != 1 || queries[0] == "" {
+		return 0, fmt.Errorf("query path must contain exactly one non-empty q parameter")
 	}
 
 	start := time.Now()

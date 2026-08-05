@@ -172,13 +172,19 @@ func TestFlightClientDoFailures(t *testing.T) {
 			name:    "missing query",
 			path:    "/query?epoch=ms",
 			client:  &fakeFlightQueryClient{},
-			wantErr: "exactly one q parameter",
+			wantErr: "exactly one non-empty q parameter",
 		},
 		{
 			name:    "duplicate query",
 			path:    "/query?q=SELECT+1&q=SELECT+2",
 			client:  &fakeFlightQueryClient{},
-			wantErr: "exactly one q parameter",
+			wantErr: "exactly one non-empty q parameter",
+		},
+		{
+			name:    "empty query",
+			path:    "/query?q=",
+			client:  &fakeFlightQueryClient{},
+			wantErr: "exactly one non-empty q parameter",
 		},
 		{
 			name:    "query call",
@@ -210,6 +216,33 @@ func TestFlightClientDoFailures(t *testing.T) {
 			}
 			if reader, ok := tt.client.reader.(*fakeRawFlightReader); ok && reader.releaseCalls != tt.wantReleases {
 				t.Fatalf("Release calls = %d, want %d", reader.releaseCalls, tt.wantReleases)
+			}
+		})
+	}
+}
+
+func TestFlightClientDoRejectsNilClientAndQuery(t *testing.T) {
+	validQuery := &query.HTTP{Path: []byte("/query?q=SELECT+1")}
+	tests := []struct {
+		name    string
+		flight  *FlightClient
+		query   *query.HTTP
+		wantErr string
+	}{
+		{name: "nil receiver", query: validQuery, wantErr: "Flight client is nil"},
+		{name: "nil client", flight: &FlightClient{}, query: validQuery, wantErr: "Flight client is nil"},
+		{name: "nil query", flight: &FlightClient{client: &fakeFlightQueryClient{}}, wantErr: "InfluxDB query is nil"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					t.Fatalf("Do panicked: %v", recovered)
+				}
+			}()
+			_, err := tt.flight.Do(tt.query, nil)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want substring %q", err, tt.wantErr)
 			}
 		})
 	}
