@@ -1,8 +1,19 @@
-# QWP symbol vs varchar, and ILP — TSBS ingestion at 1K/4K/100K/1M
+# QWP vs ILP on QuestDB — TSBS ingestion (1K/4K/100K/1M) and queries
+
+AWS `r8a.8xlarge`, latest `go-questdb-client`. All ingestion figures are **rows
+sent per second** (the loader's own timer, the convention behind QuestDB's
+published TSBS numbers); committed/WAL-apply rates are discussed separately.
 
 ## Summary
 
-Three findings, in order of importance:
+**Headline (4,000 hosts):** over a real network QuestDB ingests QWP at ~19M rows/s
+against ILP's 5.3M (**3.6×**), and ~48M against ILP's ~11M co-located (**4.4×**).
+QWP's binary rows are ~3.4× smaller on the wire, so ILP saturates the ~15 Gbit/s
+link first. Reads follow the same shape — QWP's columnar batches win on large
+result sets. The rest of this doc is the how and why, plus two follow-ups on the
+latest client: symbol vs varchar, and the query transports.
+
+Three findings from the symbol-vs-varchar follow-up, in order of importance:
 
 1. **The latest Go client unblocks 1M for QWP symbol.** With the earlier client
    the 1M-host symbol run had its frames rejected by the server (connection
@@ -51,6 +62,63 @@ that symbol ingests 1M directly and about twice as fast.
   transport, not a bigger server.
 - **Rounds:** 2 per config; round 2 is the steady-state figure (round 1 is
   warmup). Reported numbers below are round 2.
+
+### How the loader sends QWP
+
+QWP is a binary, columnar protocol over a WebSocket (port 9000), from the Go
+client `github.com/questdb/go-questdb-client/v4`. The loader:
+
+- **One sender per worker** — QWP has no connection pool; each sender pipelines
+  rows into an in-memory cursor engine that a background goroutine drains over
+  the socket, so 32 workers open 32 senders.
+- **Rows built through the typed API** — `Table()`, `Symbol(k,v)` per tag,
+  `Int64Column`/`Float64Column` per field, `At(ts)`. The client encodes each
+  value into the columnar wire format here. Even with the binary `questdb-qwp`
+  input (which removes the *text parsing*), every row still passes through this
+  encoder — that per-row encoding is the client-side CPU cost.
+- **Flush per batch** (10k rows), not per row, keeping each frame under the
+  server's ~2 MiB cap.
+- **Publish, not commit** — `Flush` hands the batch off and returns; `Close`
+  drains and waits for the final cumulative ack. `--qwp-preencode-replay` runs
+  this encoder once up front, writes the frames to disk, and times only the
+  replay, so the measurement is server + network with the client encoding out.
+
+ILP does almost no client work — its text is already the wire format, so the
+loader just writes bytes to a socket. That asymmetry is why an *unpinned*
+co-located comparison is unfair to QWP (next).
+
+### Why the CPU pinning: the co-located core competition
+
+Run the loader and server on one box unpinned, and QWP and a well-tuned ILP/TCP
+come out **level** on rows sent — not because the protocols are equal, but
+because the QWP client's encoding steals cores from the server. Sampled from
+`/proc` during a co-located 4,000-host load (100% = one core, box = 3200%):
+
+| load | loader CPU | server CPU |
+|---|---|---|
+| QWP | 958% | 2006% |
+| ILP/TCP | 169% | 2557% |
+
+The QWP loader burns ~10 cores encoding rows; the ILP/TCP loader burns ~1.7 (its
+text is already the wire format). On a shared box every core the QWP client takes
+is one the server loses, so the two finish level despite QWP doing *less*
+server-side work — per million rows/s the server actually spends ~1.8 cores on
+QWP against ILP/TCP's ~2.1. **Pinning the server to a fixed 30 cores and the
+light loader to the other 2 removes that confound**, and keeps the server budget
+identical co-located and networked. (The CPU figures are from the original
+co-located run; the client-encoding cost they measure is not client-specific.)
+
+### ILP/TCP depends on the server's thread pools
+
+An ILP/TCP number says as much about server configuration as about the protocol.
+The nightly gives the ILP/TCP pools **2 threads** where the shared pools each get
+31 (the release build has no separate ILP pool and serves TCP from the shared
+ones) — re-confirmed yesterday. Left stock, ILP/TCP at 4,000 hosts sends ~1.7M
+rows/s; sized to match the shared pools it reaches ~9–12M, the release-build
+rate. This run sizes them to the pinned core count (`QDB_LINE_TCP_IO_WORKER_COUNT`
+and `..._WRITER_WORKER_COUNT` = 29) so ILP is representative, not crippled.
+Record the pool sizes with any ILP/TCP figure, or use ILP/HTTP, which rides the
+shared pools and needs no tuning.
 
 ### Why with and without varchar
 
@@ -150,6 +218,17 @@ would be impossible at 318 B/row over a 15 Gbit/s link, is the proof. Varchar's
 ~182 B/row is real and constant (no dictionary), which is why varchar, not
 symbol, is the one that saturates the wire.
 
+### Send vs committed, and WAL apply
+
+Send rate is not commit rate. QuestDB applies the write-ahead log
+asynchronously, so a flushed/replayed row is *sent*, not yet queryable. This
+report times **send** throughput (the convention behind QuestDB's published TSBS
+numbers). Committed (rows-made-visible) rates are lower and WAL-apply-bound — and
+that is the one place QWP is ahead by a wide margin: at 4,000 hosts co-located,
+ILP/TCP commits ~3.5M rows/s against QWP's ~6.5M. Sweeping
+`QDB_WAL_APPLY_WORKER_COUNT` (3 → 8/16/31) changed nothing, because TSBS writes a
+single table and apply parallelizes per table.
+
 ## Query results (reads): pg vs http vs qwp
 
 Separate from ingestion: the same box (r8a.8xlarge) loaded `cpu-only` scale 4000
@@ -193,6 +272,15 @@ Findings:
 Net, for reads: QWP's columnar batches help most exactly where the result set is
 large (heavy scans / wide selects), mirroring the ingestion story; `http`/JSON is
 the one to avoid for analytical results, and `pg` remains a strong default.
+
+## Data volume
+
+The same 69.1M rows (4,000 hosts, 2 days) are **24 GB** as ILP line-protocol text
+versus **7.1 GB** as `questdb-qwp` binary — **3.4× smaller**. That ratio is the
+whole ingestion story over a network: it is what lets QWP carry ~3.6× the rows of
+ILP through the same ~15 Gbit/s link. It is invisible co-located, where loopback
+has no bandwidth limit and quietly hands the larger text format a subsidy no real
+network gives it.
 
 ## Commands — localhost run (copy-paste)
 
@@ -304,9 +392,16 @@ and re-created as SYMBOL (varchar).
 - **The QWP numbers are `--qwp-preencode-replay`** (server + transport, no Go
   client row-building) — a server-capacity diagnostic, not an end-to-end loader
   benchmark.
+- **QWP's send rate depends on the ack policy.** In the original through-loader
+  runs, plain QWP sent ~11.5M rows/s and `--qwp-await-ack` ~14.3M at 4,000 hosts
+  co-located — a ~25% swing from when the client waits — so a QWP send figure
+  needs the ack mode stated. The replay path used here validates the final
+  cumulative ack instead.
 
 ## Reproducing
 
 `--qwp-tags-as-varchar` and the 30/2 pinning are also documented in
-`docs/questdb.md`. Raw results: `sweep-vc-localhost.json`, `sweep-vc-network.json`
-(4K/100K/1M), and `sweep-vc-1k-localhost.json`, `sweep-vc-1k-network.json` (1K).
+`docs/questdb.md`. Raw results in this folder: `sweep-vc-localhost.json`,
+`sweep-vc-network.json` (4K/100K/1M), `sweep-vc-1k-localhost.json`,
+`sweep-vc-1k-network.json` (1K), and `query-results-vc.json` (the 16 query types
+× pg/http/qwp).
