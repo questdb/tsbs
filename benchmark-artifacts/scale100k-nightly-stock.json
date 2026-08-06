@@ -1,0 +1,38 @@
+[
+  {
+    "build": "nightly-stock",
+    "window": "dense-2h24m",
+    "label": "ilp tcp",
+    "round": 1,
+    "loader_rows_s": 1187838.6735199997,
+    "committed_rows_s": 1179432.3965329034,
+    "rows": 86400000
+  },
+  {
+    "build": "nightly-stock",
+    "window": "dense-2h24m",
+    "label": "ilp tcp",
+    "round": 2,
+    "loader_rows_s": 1204418.9657284766,
+    "committed_rows_s": 1195904.010414904,
+    "rows": 86400000
+  },
+  {
+    "build": "nightly-stock",
+    "window": "sparse-2day",
+    "label": "ilp tcp",
+    "round": 1,
+    "loader_rows_s": 1201837.2727488899,
+    "committed_rows_s": 1193329.7941226757,
+    "rows": 86400000
+  },
+  {
+    "build": "nightly-stock",
+    "window": "sparse-2day",
+    "label": "ilp tcp",
+    "round": 2,
+    "loader_rows_s": 1196792.8246882241,
+    "committed_rows_s": 1188283.463258206,
+    "rows": 86400000
+  }
+]

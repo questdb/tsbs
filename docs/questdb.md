@@ -2,7 +2,9 @@
 
 QuestDB is a high-performance open-source time series database with SQL as a
 query language with time-oriented extensions. QuestDB implements PostgreSQL wire
-protocol, REST API, and supports ingestion using InfluxDB Line Protocol over TCP.
+protocol, REST API, and supports ingestion over both the QuestDB Wire Protocol
+(QWP), a binary columnar protocol carried on a WebSocket, and InfluxDB Line
+Protocol over TCP.
 
 This guide explains how the data for TSBS is generated along with additional
 flags available when using the data importer (`tsbs_load_questdb`).
@@ -28,11 +30,298 @@ An example reading from the Dev Ops use case looks like the following:
 cpu,hostname=host_0,region=eu-central-1,datacenter=eu-central-1a,rack=6,os=Ubuntu15.10,arch=x86,team=SF,service=19,service_version=1,service_environment=test usage_user=58i,usage_system=2i,usage_idle=24i,usage_nice=61i,usage_iowait=22i,usage_irq=63i,usage_softirq=6i,usage_steal=44i,usage_guest=80i,usage_guest_nice=38i 1451606400000000000
 ```
 
+## Data formats
+
+Two generator formats target QuestDB:
+
+- **`questdb`**: InfluxDB line protocol text, as described above. Works with
+  both ingestion protocols.
+- **`questdb-qwp`**: a binary, schema-and-dictionary encoded form of the same
+  points, for the QWP protocol only. Table names, column names and symbol
+  values are written once and referenced by id afterwards, and numbers are
+  written in their native width, so the loader does not parse text at all.
+
+The loader detects the format from the file itself (a `questdb-qwp` file starts
+with the magic `QWPB`), so no flag selects it. Loading a binary file with
+`--protocol=ilp` is refused rather than silently mis-sent.
+
+The binary format is both smaller and much cheaper to load. For the cpu-only
+data set at scale 100 over 24 hours, 864k rows: 297 MB of ILP text versus 88 MB
+of binary, and decoding a row costs 51 ns instead of the 592 ns it takes to
+parse the equivalent line of text.
+
+Queries are unaffected: generate them with `--format questdb` in both cases.
+
+```bash
+./tsbs_generate_data \
+  --use-case="cpu-only" --seed=123 --scale=100 \
+  --timestamp-start="2016-01-01T00:00:00Z" --timestamp-end="2016-01-02T00:00:00Z" \
+  --log-interval="10s" --format="questdb-qwp" > /tmp/data_qwp
+
+./tsbs_load_questdb --file /tmp/data_qwp --workers 8
+```
+
+## Ingestion protocols
+
+The loader can ingest over three protocols, selected with `--protocol`:
+
+- **`qwp`** (default): the QuestDB Wire Protocol, a binary columnar protocol
+  spoken over a WebSocket on the main HTTP port (9000). One sender per worker,
+  flushed on every TSBS batch boundary.
+- **`ilp-http`**: line protocol over HTTP on port 9000, sent with the client
+  library rather than by hand.
+- **`ilp`**: the original path, hand-written line protocol text written straight
+  to the TCP port (9009). It is what TSBS has always measured, and every other
+  TSBS target speaks a text line protocol over a socket.
+
+### `ilp` over TCP depends heavily on the server's thread pools
+
+An ILP/TCP figure says as much about the server's configuration as about the
+transport. Measured on a 32 vCPU r8a.8xlarge loading 69.1M rows with 32 workers,
+send rates:
+
+| server | ILP/TCP | ILP/HTTP |
+|---|---|---|
+| QuestDB 9.4.3 release, defaults | 9.3-12.5M rows/s | 6.8-6.9M rows/s |
+| QuestDB 9.4.4-SNAPSHOT nightly, defaults | 1.7M rows/s | 6.9-7.0M rows/s |
+| the same nightly, `QDB_LINE_TCP_IO_WORKER_COUNT=16` | 8.0M rows/s | - |
+
+ILP/TCP swings by a factor of seven across builds and settings while ILP/HTTP
+stays put. The nightly gives the ILP/TCP pools 2 threads while `shared-write`,
+`shared-query` and `shared-network` each get 31, so line protocol parsing is
+confined to two threads no matter how many clients connect; the release build
+has no separate ILP pool at all and serves TCP from the shared pools. Thirty-two
+connections were verified as established in every case, and the loader reads and
+parses that file at 17.3M rows/s with `--do-load=false`, so neither the client
+nor the connection count is the limit.
+
+Record the server build and the ILP thread-pool sizes alongside any ILP/TCP
+number, or use `ilp-http`, which is served by the shared pools and needed no
+tuning on either build.
+
+### Co-located comparison: pin the CPUs
+
+When the loader and QuestDB run on one box they contend for the same cores, and
+the contention is not symmetric: the QWP client encodes every row while the ILP
+client writes text it already has, so whichever protocol leaves more cores for
+the server looks faster for a reason that has nothing to do with the wire. To
+compare protocols on one machine, pin the loader and the server to disjoint core
+sets so each protocol sees the same, non-competing budget. Both loaders are
+light on CPU (the ILP loader used ~1.7 cores, and a `--qwp-preencode-replay`
+send is lighter still), so give the client just a couple of cores and the server
+the rest. On a 32 vCPU box, thirty for the server and two for the client:
+
+```bash
+sudo docker run -d --name questdb --network host --cpuset-cpus=0-29 \
+  -e QDB_SHARED_WORKER_COUNT=29 \
+  -e QDB_LINE_TCP_IO_WORKER_COUNT=29 \
+  -e QDB_LINE_TCP_WRITER_WORKER_COUNT=29 \
+  questdb/questdb:nightly
+
+taskset -c 30-31 ./tsbs_load_questdb --file /tmp/data_qwp --workers 32
+```
+
+Keep the server's core count the same whether the client is co-located or on its
+own instance: give the server the same thirty cores in the networked run too. If
+a co-located server is capped at thirty cores but the networked server is given
+all thirty-two, the network run is measuring a slightly bigger server, not the
+network, and the two topologies are no longer strictly comparable.
+
+ILP/TCP's send rate also flatters it most. Being fire-and-forget, it outruns
+write-ahead log apply by the widest margin: on the release build it sends at
+9.3-12.5M rows/s but commits at 3.2-3.9M, while HTTP sends at 6.8-6.9M and
+commits at 5.0-5.1M. The transport that looks fastest on the wire is the slowest
+to make rows visible.
+
+### What a completed write means
+
+The three differ, which matters when quoting a rate:
+
+- **`ilp`** is fire-and-forget: the write returns once the bytes reach the
+  socket buffer and the server never acknowledges them. Its reported rate is
+  bytes-on-wire, and overstates committed throughput.
+- **`ilp-http`** is request/response: a successful flush means the server
+  processed that batch.
+- **`qwp`** publishes each batch to the sender's cursor engine and a background
+  goroutine delivers it, so a flush means "published", not "committed". The
+  loader closes its senders at the end of the run, and a clean close drains and
+  waits for outstanding acknowledgements, so the final row count for a
+  successful QWP run is server-confirmed. Use `--qwp-await-ack` if every
+  intermediate report must be acknowledged too; that serialises the pipeline.
+
+Whichever you use, confirming the row count from the server afterwards is the
+only measurement that is comparable across all three.
+
+This is not a pedantic distinction. On the 69.1M-row load above, QWP sends at
+11.5M rows/s with `--qwp-await-ack` off and 14.3M with it on, yet the committed
+rate moves the other way, 6.7M down to 6.3M. Awaiting acks makes the publish
+phase finish sooner (6.0s to 4.8s) and leaves correspondingly more write-ahead
+log to apply after the loader exits (4.2s to 6.0s). A send rate can therefore be
+moved 25% purely by changing when the client waits, so quote the committed
+figure, or quote both and say which is which.
+
+### Isolating QWP server ingestion
+
+`--qwp-preencode-replay` is a server-capacity diagnostic for binary
+`questdb-qwp` input. It first uses the stock Go client to produce valid QWP
+WebSocket frames, then starts the timer and replays those frames over fresh
+connections:
+
+```bash
+./tsbs_load_questdb \
+  --file /tmp/data_qwp \
+  --protocol qwp \
+  --workers 32 \
+  --batch-size 10000 \
+  --qwp-preencode-replay
+```
+
+The reported rate includes connection setup, network transfer, server
+processing, and the final cumulative ACK. Input decoding and QWP encoding are
+reported separately and excluded. This makes the result useful for finding a
+server-side ceiling, but it is not an end-to-end loader or client benchmark;
+report regular QWP results separately.
+
+Keep `--batch-size` small enough that one batch stays under the server's
+~2 MB frame limit. Each batch becomes one QWP frame, and a frame's size grows
+with both the batch size and the per-frame symbol dictionary, so a batch that is
+fine at low cardinality can produce an oversized frame the server rejects at
+high cardinality. 10000 is safe for the `cpu-only` set; batches in the tens of
+thousands overflow the cap. `--qwp-tags-as-varchar` (below) sidesteps the
+dictionary term.
+
+QWP support lives in `github.com/questdb/go-questdb-client/v4` and has not been
+released yet, so `go.mod` tracks the client's `main` branch as a pseudo-version.
+Go records a concrete version rather than a floating one, so refresh it with:
+
+```bash
+go get github.com/questdb/go-questdb-client/v4@main
+go mod tidy
+```
+
+## Query transports
+
+`tsbs_run_queries_questdb` can send the generated queries three ways, selected
+with `--query-protocol`:
+
+| Value | Transport | Port | Notes |
+|---|---|---|---|
+| `pg` | PostgreSQL wire (pgx v5) | 8812 | Default, and what QuestDB's published TSBS numbers use |
+| `http` | REST `/exec`, JSON results | 9000 | The original TSBS path. `--use-http` still selects it |
+| `qwp` | QuestDB Wire Protocol, columnar result batches | 9000 | Same protocol and port as QWP ingestion |
+
+All three run the identical SQL with the identical bind parameters, so the
+numbers are comparable: the only difference is how the statement is sent and how
+the rows come back. Query files are protocol-independent, so one file set feeds
+all three, and the choice can be changed between runs without regenerating.
+
+```bash
+./tsbs_run_queries_questdb --file /tmp/queries_questdb --query-protocol qwp
+./tsbs_run_queries_questdb --file /tmp/queries_questdb --query-protocol pg
+./tsbs_run_queries_questdb --file /tmp/queries_questdb --query-protocol http
+```
+
+QWP returns results as columnar batches rather than JSON, which shows up most on
+queries that return many rows or many groups.
+
+## `tsbs_run_queries_questdb` additional flags
+
+**`--query-protocol`** (type: `string`, default: `pg`)
+
+Query transport: `pg`, `http` or `qwp`.
+
+**`--qwp-addr`** (type: `string`, default `127.0.0.1:9000`)
+
+QWP WebSocket endpoint for `--query-protocol=qwp`. A comma-separated list
+enables failover.
+
+**`--qwp-conf`** (type: `string`, default: empty)
+
+Full QWP query client configuration string, overriding the other QWP connection
+flags.
+
+**`--qwp-tls`** (type: `boolean`, default: `false`)
+
+Use TLS for QWP. The certificate check is disabled, so the client trusts any
+server. Combine with `--username` and `--password` for authentication.
+
 ## `tsbs_load_questdb` additional flags
+
+**`--protocol`** (type: `string`, default: `qwp`)
+
+Ingestion protocol: `qwp`, `ilp-http` or `ilp`.
+
+**`--ilp-http-addr`** (type: `string`, default `127.0.0.1:9000`)
+
+QuestDB HTTP endpoint for `--protocol=ilp-http`, in the format `<ip>:<port>`.
+
+**`--qwp-addr`** (type: `string`, default `127.0.0.1:9000`)
+
+QuestDB wire protocol WebSocket endpoint in the format `<ip>:<port>`. A
+comma-separated list of endpoints enables client-side failover, walked in
+priority order on connect and reconnect.
+
+**`--qwp-await-ack`** (type: `boolean`, default: `false`)
+
+Wait for the server to acknowledge every batch before counting it.
+
+**`--qwp-nano-timestamps`** (type: `boolean`, default: `false`)
+
+Send nanosecond designated timestamps. Off by default so that a QWP run creates
+the same table as an ILP run, whose designated timestamp is microsecond
+resolution: the two protocols can then load into the same table, and the
+generated data has whole-second timestamps, so nothing is lost. Turning it on
+makes the designated column `TIMESTAMP_NS`, which an ILP-created table cannot
+accept.
+
+**`--qwp-user`, `--qwp-password`, `--qwp-token`** (type: `string`)
+
+Basic auth credentials or bearer token for QWP. Both imply TLS, so pass `--tls`
+with them.
+
+**`--qwp-close-timeout-ms`** (type: `uint`, default: `60000`)
+
+How long `Close` waits for the server to acknowledge outstanding batches. Close
+is the loader's acknowledgement barrier, so this bounds the wait for the last
+batches of a run. The client's own default is 5 seconds, which is not enough for
+a large final flush: if it expires, the loader reports the unacknowledged
+batches and exits non-zero rather than claiming success.
+
+**`--qwp-preencode-replay`** (type: `boolean`, default: `false`)
+
+Pre-encode binary input outside the timed interval and replay the stock
+client's QWP WebSocket frames. This measures the QWP server path without the
+loader's row-building cost. The final cumulative ACK is required.
+
+**`--qwp-tags-as-varchar`** (type: `boolean`, default: `false`)
+
+Send tag columns as VARCHAR strings over QWP instead of SYMBOL, so no per-frame
+symbol dictionary is shipped. The server still stores the columns as SYMBOL when
+the table already exists with SYMBOL columns (pre-create it, or let an earlier
+SYMBOL load create it). At low cardinality each row is larger on the wire; at
+very high cardinality it avoids the per-frame dictionary growth that inflates QWP
+frames as the number of distinct series climbs, keeping frames under the server's
+size limit where symbol encoding would overflow it. Applies to the binary
+`questdb-qwp` path.
+
+**`--qwp-sf-dir`** (type: `string`, default: empty)
+
+Store-and-forward directory. When set, un-acked frames spill to disk and replay
+after a reconnect or a process restart. Leave it empty for throughput
+benchmarks: routing every frame through disk before the server acknowledgement
+makes the run fsync-latency-bound and costs an order of magnitude on local
+disks. Report durable-ingest runs as a separate mode.
+
+**`--qwp-conf`** (type: `string`, default: empty)
+
+Full QWP client configuration string, for example
+`ws::addr=host:9000;auto_flush=off;`. Overrides every other QWP connection flag,
+so any client option can be set even when it has no dedicated flag.
 
 **`--ilp-bind-to`** (type: `string`, default `127.0.0.1:9009`)
 
-QuestDB InfluxDB line protocol TCP port in the format `<ip>:<port>`
+QuestDB InfluxDB line protocol TCP port in the format `<ip>:<port>`. Only used
+with `--protocol=ilp`.
 
 **`--url`** (type: `string`, default: `http://localhost:9000/`)
 
@@ -90,6 +379,18 @@ Generated data can be loaded directly using the tool:
 ./tsbs_load_questdb --file /tmp/data --workers 4
 ```
 
+That ingests over QWP. To load the same text over line protocol on HTTP:
+
+```bash
+./tsbs_load_questdb --file /tmp/data --workers 4 --protocol ilp-http
+```
+
+Or over line protocol on TCP, the path TSBS has always used:
+
+```bash
+./tsbs_load_questdb --file /tmp/data --workers 4 --protocol ilp
+```
+
 ### Query benchmarks for Dev Ops data set (single-groupby-5-8-1 type)
 
 Queries are generated using the `questdb` format.
@@ -133,19 +434,40 @@ cd ~/tmp/go/src/github.com/questdb/
 
 ### TLS and authentication support
 
-The ingestion benchmark tool supports InfluxDB Line Protocol authentication as
-well as TLS encryption:
+Over QWP, the ingestion benchmark tool supports basic authentication or a bearer
+token, both over TLS:
 ```bash
 ./tsbs_load_questdb --file /tmp/data --workers 4 \
+  --tls \
+  --qwp-user user \
+  --qwp-password quest
+```
+
+Over ILP, it supports InfluxDB Line Protocol token authentication as well as TLS
+encryption:
+```bash
+./tsbs_load_questdb --file /tmp/data --workers 4 \
+  --protocol ilp \
   --tls \
   --auth-id "my_user" \
   --auth-token "GwBXoGG5c6NoUTLXnzMxw_uNiVa8PKobzx5EiuylMW0"
 ```
 
-The query benchmark tool also supports basic HTTP authentication and TLS encryption:
+The query benchmark tool also supports basic authentication and TLS encryption,
+over HTTP:
 ```bash
 ./tsbs_run_queries_questdb --file /tmp/queries_questdb \
+  --query-protocol http \
   --url "https://localhost:9000" \
+  --username user \
+  --password quest
+```
+and over QWP:
+```bash
+./tsbs_run_queries_questdb --file /tmp/queries_questdb \
+  --query-protocol qwp \
+  --qwp-addr localhost:9000 \
+  --qwp-tls \
   --username user \
   --password quest
 ```

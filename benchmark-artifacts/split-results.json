@@ -1,0 +1,98 @@
+[
+  {
+    "label": "ilp tcp",
+    "round": 1,
+    "loader_rows_s": 5321988.955842277,
+    "wire_gbit_s": 14.768292296948783,
+    "committed_rows_s": 5120533.005423616,
+    "rows": 69120000
+  },
+  {
+    "label": "ilp http",
+    "round": 1,
+    "loader_rows_s": 5287659.387313172,
+    "wire_gbit_s": 14.673029208905467,
+    "committed_rows_s": 5286632.6791471625,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp",
+    "round": 1,
+    "loader_rows_s": 9420781.046334429,
+    "wire_gbit_s": 7.764580439931166,
+    "committed_rows_s": 9104931.933549736,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp ack",
+    "round": 1,
+    "loader_rows_s": 11598134.71809372,
+    "wire_gbit_s": 9.559149026909695,
+    "committed_rows_s": 9908523.292815896,
+    "rows": 69120000
+  },
+  {
+    "label": "ilp tcp",
+    "round": 2,
+    "loader_rows_s": 5302578.988108872,
+    "wire_gbit_s": 14.714430464588794,
+    "committed_rows_s": 4828876.094922107,
+    "rows": 69120000
+  },
+  {
+    "label": "ilp http",
+    "round": 2,
+    "loader_rows_s": 5292150.615137273,
+    "wire_gbit_s": 14.685492174505141,
+    "committed_rows_s": 5291137.033740578,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp",
+    "round": 2,
+    "loader_rows_s": 9117184.190175131,
+    "wire_gbit_s": 7.514356790812785,
+    "committed_rows_s": 8821263.135083675,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp ack",
+    "round": 2,
+    "loader_rows_s": 11268886.034171227,
+    "wire_gbit_s": 9.28778321567981,
+    "committed_rows_s": 9669994.1455084,
+    "rows": 69120000
+  },
+  {
+    "label": "ilp tcp",
+    "round": 3,
+    "loader_rows_s": 5307732.512813993,
+    "wire_gbit_s": 14.728731275777294,
+    "committed_rows_s": 5107268.517485168,
+    "rows": 69120000
+  },
+  {
+    "label": "ilp http",
+    "round": 3,
+    "loader_rows_s": 5279248.250084207,
+    "wire_gbit_s": 14.649688661944966,
+    "committed_rows_s": 5176147.333026298,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp",
+    "round": 3,
+    "loader_rows_s": 9404664.43376263,
+    "wire_gbit_s": 7.751297174550359,
+    "committed_rows_s": 9090463.88316657,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp ack",
+    "round": 3,
+    "loader_rows_s": 11908268.287086613,
+    "wire_gbit_s": 9.81476021580419,
+    "committed_rows_s": 9108241.861325515,
+    "rows": 69120000
+  }
+]

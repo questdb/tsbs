@@ -1,0 +1,110 @@
+[
+  {
+    "label": "ilp tcp",
+    "round": 1,
+    "expected": 69120000,
+    "loader_rows_s": 5321398.829528387,
+    "wire_gbit_s": 14.766654721604683,
+    "committed_rows_s": 5119232.518852154,
+    "rows": 69120000
+  },
+  {
+    "label": "ilp http",
+    "round": 1,
+    "expected": 69120000,
+    "loader_rows_s": 5301573.333334309,
+    "wire_gbit_s": 14.711639815494292,
+    "committed_rows_s": 5300423.373060903,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp",
+    "round": 1,
+    "expected": 69120000,
+    "loader_rows_s": 9235292.744404428,
+    "wire_gbit_s": 7.611701518967164,
+    "committed_rows_s": 9232291.149438674,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp ack",
+    "round": 1,
+    "expected": 69120000,
+    "loader_rows_s": 11947534.44365493,
+    "wire_gbit_s": 9.847123268266836,
+    "committed_rows_s": 9800476.034038594,
+    "rows": 69120000
+  },
+  {
+    "label": "ilp tcp",
+    "round": 2,
+    "expected": 69120000,
+    "loader_rows_s": 5299257.1538756965,
+    "wire_gbit_s": 14.705212516313331,
+    "committed_rows_s": 4829219.483248217,
+    "rows": 69120000
+  },
+  {
+    "label": "ilp http",
+    "round": 2,
+    "expected": 69120000,
+    "loader_rows_s": 5296574.096532272,
+    "wire_gbit_s": 14.697767146654368,
+    "committed_rows_s": 5295633.012911113,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp",
+    "round": 2,
+    "expected": 69120000,
+    "loader_rows_s": 9811115.571548937,
+    "wire_gbit_s": 8.086293024546393,
+    "committed_rows_s": 9150721.728635276,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp ack",
+    "round": 2,
+    "expected": 69120000,
+    "loader_rows_s": 11761413.510248356,
+    "wire_gbit_s": 9.693722934273008,
+    "committed_rows_s": 10028029.83812346,
+    "rows": 69120000
+  },
+  {
+    "label": "ilp tcp",
+    "round": 3,
+    "expected": 69120000,
+    "loader_rows_s": 5290475.623881231,
+    "wire_gbit_s": 14.680844145230877,
+    "committed_rows_s": 4910584.255274511,
+    "rows": 69120000
+  },
+  {
+    "label": "ilp http",
+    "round": 3,
+    "expected": 69120000,
+    "loader_rows_s": 5302403.739548883,
+    "wire_gbit_s": 14.713944157311571,
+    "committed_rows_s": 5301383.318976768,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp",
+    "round": 3,
+    "expected": 69120000,
+    "loader_rows_s": 9146212.089247834,
+    "wire_gbit_s": 7.538281501114794,
+    "committed_rows_s": 8848009.397662396,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp ack",
+    "round": 3,
+    "expected": 69120000,
+    "loader_rows_s": 11316135.024840942,
+    "wire_gbit_s": 9.32672569687709,
+    "committed_rows_s": 10066706.75196477,
+    "rows": 69120000
+  }
+]

@@ -1,0 +1,74 @@
+[
+  {
+    "batch": 10000,
+    "round": 1,
+    "ok": true,
+    "send_rows_s": 18264194.43,
+    "preencode_s": 51.138,
+    "visible": 69120000,
+    "expected": 69120000
+  },
+  {
+    "batch": 10000,
+    "round": 2,
+    "ok": true,
+    "send_rows_s": 18724858.57,
+    "preencode_s": 51.227,
+    "visible": 69120000,
+    "expected": 69120000
+  },
+  {
+    "batch": 10000,
+    "round": 3,
+    "ok": true,
+    "send_rows_s": 18345006.11,
+    "preencode_s": 51.215,
+    "visible": 69120000,
+    "expected": 69120000
+  },
+  {
+    "batch": 20000,
+    "round": 1,
+    "ok": true,
+    "send_rows_s": 19002084.31,
+    "preencode_s": 50.828,
+    "visible": 69120000,
+    "expected": 69120000
+  },
+  {
+    "batch": 20000,
+    "round": 2,
+    "ok": true,
+    "send_rows_s": 18932515.49,
+    "preencode_s": 50.688,
+    "visible": 69120000,
+    "expected": 69120000
+  },
+  {
+    "batch": 20000,
+    "round": 3,
+    "ok": true,
+    "send_rows_s": 19271229.47,
+    "preencode_s": 50.935,
+    "visible": 69120000,
+    "expected": 69120000
+  },
+  {
+    "batch": 30000,
+    "round": 1,
+    "ok": false,
+    "error": "2026/07/23 21:10:16 QWP pre-encoded replay failed: send replay stream: read /tmp/tsbs-qwp-replay-3869801592/worker-016.qwp-frames: sendfile: broken pipe"
+  },
+  {
+    "batch": 30000,
+    "round": 2,
+    "ok": false,
+    "error": "2026/07/23 21:11:11 QWP pre-encoded replay failed: send replay stream: read /tmp/tsbs-qwp-replay-2472900302/worker-031.qwp-frames: sendfile: broken pipe"
+  },
+  {
+    "batch": 30000,
+    "round": 3,
+    "ok": false,
+    "error": "2026/07/23 21:12:04 QWP pre-encoded replay failed: send replay stream: read /tmp/tsbs-qwp-replay-2887028866/worker-010.qwp-frames: sendfile: broken pipe"
+  }
+]

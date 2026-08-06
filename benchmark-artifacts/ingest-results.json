@@ -1,0 +1,74 @@
+[
+  {
+    "label": "ilp text",
+    "workers": 32,
+    "loader_secs": 42.73763990402222,
+    "reported_rows_s": 0.0,
+    "commit_secs": 43.25106501579285,
+    "committed_rows_s": 1598110.9361066895,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp from text",
+    "workers": 32,
+    "loader_secs": 8.253281831741333,
+    "reported_rows_s": 0.0,
+    "commit_secs": 13.059716939926147,
+    "committed_rows_s": 5292610.88260546,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp from binary",
+    "workers": 32,
+    "loader_secs": 5.884106159210205,
+    "reported_rows_s": 0.0,
+    "commit_secs": 10.190994501113892,
+    "committed_rows_s": 6782458.767144372,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp binary, ack",
+    "workers": 32,
+    "loader_secs": 4.91455602645874,
+    "reported_rows_s": 0.0,
+    "commit_secs": 10.993937492370605,
+    "committed_rows_s": 6287101.418210425,
+    "rows": 69120000
+  },
+  {
+    "label": "ilp text",
+    "workers": 32,
+    "loader_secs": 41.741602659225464,
+    "reported_rows_s": 0.0,
+    "commit_secs": 41.99730920791626,
+    "committed_rows_s": 1645819.7275879586,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp from text",
+    "workers": 32,
+    "loader_secs": 8.627897262573242,
+    "reported_rows_s": 0.0,
+    "commit_secs": 10.647948980331421,
+    "committed_rows_s": 6491390.983153323,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp from binary",
+    "workers": 32,
+    "loader_secs": 6.035131454467773,
+    "reported_rows_s": 0.0,
+    "commit_secs": 9.567003726959229,
+    "committed_rows_s": 7224832.557054837,
+    "rows": 69120000
+  },
+  {
+    "label": "qwp binary, ack",
+    "workers": 32,
+    "loader_secs": 4.986964464187622,
+    "reported_rows_s": 0.0,
+    "commit_secs": 11.574978828430176,
+    "committed_rows_s": 5971501.203114875,
+    "rows": 69120000
+  }
+]

@@ -1,0 +1,62 @@
+[
+  {
+    "label": "qwp",
+    "round": 1,
+    "expected": 86400000,
+    "wall_rows_s": 9076510.421730734,
+    "wire_gbit_s": 7.543282618493143,
+    "committed_rows_s": 1454702.955425554,
+    "rows": 86400000,
+    "loader_line": "loaded 86400000 rows in 9.411sec with 32 workers (mean rate 9180322.28 rows/sec)"
+  },
+  {
+    "label": "qwp replay b10k",
+    "round": 1,
+    "expected": 86400000,
+    "wall_rows_s": 992325.1610128183,
+    "wire_gbit_s": 0.8246990077860856,
+    "committed_rows_s": 478510.6721772185,
+    "rows": 86400000,
+    "loader_line": "loaded 86400000 rows in 7.032sec with 32 workers (mean rate 12287027.87 rows/sec)"
+  },
+  {
+    "label": "qwp",
+    "round": 2,
+    "expected": 86400000,
+    "wall_rows_s": 9031656.05743847,
+    "wire_gbit_s": 7.506005170354117,
+    "committed_rows_s": 1133718.9775444546,
+    "rows": 86400000,
+    "loader_line": "loaded 86400000 rows in 9.453sec with 32 workers (mean rate 9139980.49 rows/sec)"
+  },
+  {
+    "label": "qwp replay b10k",
+    "round": 2,
+    "expected": 86400000,
+    "wall_rows_s": 1002533.4974905959,
+    "wire_gbit_s": 0.8331829254525256,
+    "committed_rows_s": 439348.96680794115,
+    "rows": 86400000,
+    "loader_line": "loaded 86400000 rows in 7.045sec with 32 workers (mean rate 12263205.80 rows/sec)"
+  },
+  {
+    "label": "qwp",
+    "round": 3,
+    "expected": 86400000,
+    "wall_rows_s": 9104696.145464148,
+    "wire_gbit_s": 7.566707136292283,
+    "committed_rows_s": 765229.6340664021,
+    "rows": 86400000,
+    "loader_line": "loaded 86400000 rows in 9.380sec with 32 workers (mean rate 9210967.62 rows/sec)"
+  },
+  {
+    "label": "qwp replay b10k",
+    "round": 3,
+    "expected": 86400000,
+    "wall_rows_s": 988582.9781076261,
+    "wire_gbit_s": 0.8215889641732478,
+    "committed_rows_s": 434355.5556828728,
+    "rows": 86400000,
+    "loader_line": "loaded 86400000 rows in 7.123sec with 32 workers (mean rate 12129263.69 rows/sec)"
+  }
+]
