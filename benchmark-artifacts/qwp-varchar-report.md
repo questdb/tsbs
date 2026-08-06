@@ -20,9 +20,11 @@ Three findings from the symbol-vs-varchar follow-up, in order of importance:
    dropped). Built against `go-questdb-client/v4` at the latest `main`
    (`4f2723e2`, 2026-07-30), QWP symbol now ingests 1M distinct series cleanly —
    33M rows/s co-located, 18.9M over the network.
-2. **Symbol beats varchar at essentially every cardinality and topology.** The
-   hypothesis that `--qwp-tags-as-varchar` would win at very high cardinality
-   (flat 182 B/row vs symbol's growing frames) **did not hold**.
+2. **Symbol beats varchar at *every* cardinality and topology.** The varchar path
+   was an experiment — does it matter whether QWP encodes tags as a dictionary
+   (SYMBOL) or as raw strings (VARCHAR)? The numbers say symbols are always
+   better; the hypothesis that varchar would win at very high cardinality (flat
+   182 B/row vs symbol's growing frames) **did not hold** in a single cell.
 3. **Why:** QWP's symbol dictionary is a *session* dictionary, amortized across
    frames — not re-shipped per frame in steady state. Over a full run each
    worker's dictionary fills and later frames reference symbols by id, so symbol
@@ -122,18 +124,24 @@ shared pools and needs no tuning.
 
 ### Why with and without varchar
 
-QWP encodes tag columns as SYMBOL using a **per-frame dictionary**: distinct tag
-values are written once per frame and then referenced by id. At extreme
-cardinality that dictionary grows, and with the *earlier* client the 1M-host run
-produced frames the server rejected outright (it acknowledged ~9 frames, then
-dropped the connection). `--qwp-tags-as-varchar` was added to test the obvious
-alternative: send tags as plain VARCHAR strings — no dictionary, uniform frame
-size — while keeping the table **stored** as SYMBOL. The two questions were
+This dimension was an **experiment**: does it matter whether QWP encodes tag
+columns as a *dictionary* (SYMBOL — each distinct value written once per frame
+and then referenced by id) or as *raw strings* (VARCHAR — the value repeated on
+every row)? The dictionary is compact but grows with cardinality, and with the
+*earlier* client the 1M-host symbol run produced frames the server rejected
+outright (it acknowledged ~9 frames, then dropped the connection).
+`--qwp-tags-as-varchar` sends the tags as plain VARCHAR strings — no dictionary,
+uniform frame size — while keeping the table **stored** as SYMBOL, to test
 (1) does varchar unblock 1M, and (2) does its flat ~182 B/row beat symbol's
-growing frames at high cardinality? Running both at every cardinality is what
-answers them; the answer is no on both counts (see Summary) — the symbol
-dictionary amortizes across frames over a full run, and the latest client
-ingests 1M symbol directly.
+growing frames at high cardinality?
+
+The answer to both is no. **Across every cardinality and both topologies, symbols
+were always at least as fast, and about 2× faster over the network.** The symbol
+dictionary amortizes across frames over a full run, so it stays wire-light even
+at 1M, and the latest client ingests 1M symbol directly — so there is no case in
+this benchmark where varchar wins, and the dictionary encoding is the right
+default. `--qwp-tags-as-varchar` remains a working escape hatch (it keeps the
+column stored as SYMBOL), just not a throughput win.
 
 ### Data volumes: total rows vary by cardinality (important)
 
