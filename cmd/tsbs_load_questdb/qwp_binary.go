@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"sync"
@@ -28,13 +29,44 @@ type qwpSchema struct {
 // they only grow, entries are never rewritten, and a batch takes a
 // snapshot of both before it is handed to a worker.
 type qwpDecoder struct {
-	r       *bufio.Reader
-	strings []string
-	schemas []*qwpSchema
-	row     []byte
+	r               *bufio.Reader
+	strings         []string
+	schemas         []*qwpSchema
+	row             []byte
+	dictionaryBytes uint64
+	schemaSlots     uint64
 }
 
 var errQwpTruncated = errors.New("truncated QWP data file")
+
+// The aggregate dictionary budget leaves more than 5 MiB of headroom above
+// the 10,888,890 hostname bytes produced by a one-million-host TSBS data set.
+// Real TSBS schemas use tens of slots; the aggregate slot budget is deliberately
+// much larger while still bounding retained slice storage.
+const (
+	maxQwpRowBytes          = 4 << 20
+	maxQwpStringBytes       = 1 << 20
+	maxQwpDictionaryEntries = 1 << 20
+	maxQwpDictionaryBytes   = 16 << 20
+	maxQwpSchemas           = 1 << 16
+	maxQwpTagsPerSchema     = 1 << 16
+	maxQwpFieldsPerSchema   = 1 << 16
+	maxQwpSchemaSlots       = 1 << 16
+)
+
+func checkQwpLimit(name string, value, limit uint64) error {
+	if value > limit {
+		return fmt.Errorf("QWP %s %d exceeds limit %d", name, value, limit)
+	}
+	return nil
+}
+
+func addQwpBudget(name string, used, additional, limit uint64) (uint64, error) {
+	if used > limit || additional > limit-used {
+		return used, fmt.Errorf("QWP aggregate %s %d+%d exceeds limit %d", name, used, additional, limit)
+	}
+	return used + additional, nil
+}
 
 // readHeader consumes the file header and reports whether the reader holds
 // a QWP binary file at all.
@@ -92,10 +124,14 @@ func (d *qwpDecoder) next() (uint64, []byte, error) {
 			if err != nil {
 				return 0, nil, errQwpTruncated
 			}
-			if uint64(cap(d.row)) < n {
-				d.row = make([]byte, n)
+			if err := checkQwpLimit("row length", n, maxQwpRowBytes); err != nil {
+				return 0, nil, err
 			}
-			d.row = d.row[:n]
+			rowLen := int(n)
+			if cap(d.row) < rowLen {
+				d.row = make([]byte, rowLen)
+			}
+			d.row = d.row[:rowLen]
 			if _, err := io.ReadFull(d.r, d.row); err != nil {
 				return 0, nil, errQwpTruncated
 			}
@@ -107,19 +143,33 @@ func (d *qwpDecoder) next() (uint64, []byte, error) {
 }
 
 func (d *qwpDecoder) readString() error {
+	if len(d.strings) >= maxQwpDictionaryEntries {
+		return fmt.Errorf("QWP dictionary entries %d exceeds limit %d", len(d.strings)+1, maxQwpDictionaryEntries)
+	}
 	n, err := binary.ReadUvarint(d.r)
 	if err != nil {
 		return errQwpTruncated
 	}
-	buf := make([]byte, n)
+	if err := checkQwpLimit("string length", n, maxQwpStringBytes); err != nil {
+		return err
+	}
+	nextDictionaryBytes, err := addQwpBudget("dictionary bytes", d.dictionaryBytes, n, maxQwpDictionaryBytes)
+	if err != nil {
+		return err
+	}
+	buf := make([]byte, int(n))
 	if _, err := io.ReadFull(d.r, buf); err != nil {
 		return errQwpTruncated
 	}
 	d.strings = append(d.strings, string(buf))
+	d.dictionaryBytes = nextDictionaryBytes
 	return nil
 }
 
 func (d *qwpDecoder) readSchema() error {
+	if len(d.schemas) >= maxQwpSchemas {
+		return fmt.Errorf("QWP schemas %d exceeds limit %d", len(d.schemas)+1, maxQwpSchemas)
+	}
 	tableID, err := binary.ReadUvarint(d.r)
 	if err != nil {
 		return errQwpTruncated
@@ -134,7 +184,14 @@ func (d *qwpDecoder) readSchema() error {
 	if err != nil {
 		return errQwpTruncated
 	}
-	s.tagKeys = make([]string, tagCount)
+	if err := checkQwpLimit("schema tag count", tagCount, maxQwpTagsPerSchema); err != nil {
+		return err
+	}
+	nextSchemaSlots, err := addQwpBudget("schema slots", d.schemaSlots, tagCount, maxQwpSchemaSlots)
+	if err != nil {
+		return err
+	}
+	s.tagKeys = make([]string, int(tagCount))
 	for i := range s.tagKeys {
 		id, err := binary.ReadUvarint(d.r)
 		if err != nil {
@@ -150,8 +207,15 @@ func (d *qwpDecoder) readSchema() error {
 	if err != nil {
 		return errQwpTruncated
 	}
-	s.fieldKeys = make([]string, fieldCount)
-	s.fieldType = make([]byte, fieldCount)
+	if err := checkQwpLimit("schema field count", fieldCount, maxQwpFieldsPerSchema); err != nil {
+		return err
+	}
+	nextSchemaSlots, err = addQwpBudget("schema slots", nextSchemaSlots, fieldCount, maxQwpSchemaSlots)
+	if err != nil {
+		return err
+	}
+	s.fieldKeys = make([]string, int(fieldCount))
+	s.fieldType = make([]byte, int(fieldCount))
 	for i := range s.fieldKeys {
 		id, err := binary.ReadUvarint(d.r)
 		if err != nil {
@@ -169,6 +233,7 @@ func (d *qwpDecoder) readSchema() error {
 	}
 
 	d.schemas = append(d.schemas, s)
+	d.schemaSlots = nextSchemaSlots
 	return nil
 }
 
@@ -315,7 +380,16 @@ func (p *qwpProcessor) writeBinaryRow(s *qwpSchema, row []byte, dict []string) e
 			if len(row) < 1 {
 				return errQwpTruncated
 			}
-			sender = sender.BoolColumn(key, row[0] != 0)
+			var value bool
+			switch row[0] {
+			case 0:
+				value = false
+			case 1:
+				value = true
+			default:
+				return errors.New("invalid QWP boolean value")
+			}
+			sender = sender.BoolColumn(key, value)
 			row = row[1:]
 		case questdb.QwpTypeString:
 			size, n := binary.Uvarint(row)
@@ -332,6 +406,9 @@ func (p *qwpProcessor) writeBinaryRow(s *qwpSchema, row []byte, dict []string) e
 
 	if len(row) < 8 {
 		return errQwpTruncated
+	}
+	if len(row) > 8 {
+		return errors.New("QWP row has trailing data")
 	}
 	return p.at(int64(binary.LittleEndian.Uint64(row)))
 }

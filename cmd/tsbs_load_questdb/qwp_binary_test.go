@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/binary"
 	"io"
+	"strings"
 	"testing"
 	"time"
 
@@ -182,6 +184,167 @@ func TestQwpDecoderRejectsGarbage(t *testing.T) {
 	if _, _, err := dec.next(); err == nil {
 		t.Error("expected an error for a truncated row, got nil")
 	}
+}
+
+func TestQwpDecoderRejectsOversizedLengthsWithoutPanicking(t *testing.T) {
+	header := []byte(questdb.QwpMagic + string([]byte{questdb.QwpVersion}))
+	stringRecord := append([]byte{questdb.QwpRecString, 1}, 't')
+	validSchema := []byte{questdb.QwpRecSchema, 0, 0, 0}
+
+	cases := []struct {
+		name    string
+		records []byte
+	}{
+		{
+			name:    "string length",
+			records: binary.AppendUvarint([]byte{questdb.QwpRecString}, 1<<20+1),
+		},
+		{
+			name: "row length",
+			records: binary.AppendUvarint(
+				append(append(append([]byte{}, stringRecord...), validSchema...), questdb.QwpRecRow, 0),
+				4<<20+1,
+			),
+		},
+		{
+			name: "tag count",
+			records: binary.AppendUvarint(
+				append(append([]byte{}, stringRecord...), questdb.QwpRecSchema, 0),
+				1<<16+1,
+			),
+		},
+		{
+			name: "field count",
+			records: binary.AppendUvarint(
+				append(append([]byte{}, stringRecord...), questdb.QwpRecSchema, 0, 0),
+				1<<16+1,
+			),
+		},
+		{
+			name:    "architecture-sized string length",
+			records: binary.AppendUvarint([]byte{questdb.QwpRecString}, ^uint64(0)),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			encoded := append(append([]byte{}, header...), tc.records...)
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					t.Fatalf("decoder panicked on oversized input: %v", recovered)
+				}
+			}()
+			dec, err := newQwpDecoder(bufio.NewReader(bytes.NewReader(encoded)))
+			if err != nil {
+				t.Fatalf("newQwpDecoder: %v", err)
+			}
+			if _, _, err := dec.next(); err == nil || !strings.Contains(err.Error(), "exceeds limit") {
+				t.Fatalf("decode error = %v, want an exceeds-limit error", err)
+			}
+		})
+	}
+}
+
+func TestQwpDecoderCapsAggregateDictionaryBytes(t *testing.T) {
+	encoded := []byte(questdb.QwpMagic + string([]byte{questdb.QwpVersion}))
+	oneMiB := bytes.Repeat([]byte{'x'}, 1<<20)
+	for i := 0; i < 16; i++ {
+		encoded = append(encoded, questdb.QwpRecString)
+		encoded = binary.AppendUvarint(encoded, uint64(len(oneMiB)))
+		encoded = append(encoded, oneMiB...)
+	}
+	encoded = append(encoded, questdb.QwpRecString, 1, 'x')
+
+	dec, err := newQwpDecoder(bufio.NewReader(bytes.NewReader(encoded)))
+	if err != nil {
+		t.Fatalf("newQwpDecoder: %v", err)
+	}
+	if _, _, err := dec.next(); err == nil || !strings.Contains(err.Error(), "aggregate dictionary bytes") {
+		t.Fatalf("decode error = %v, want an aggregate dictionary bytes error", err)
+	}
+}
+
+func TestQwpDecoderCapsAggregateSchemaSlots(t *testing.T) {
+	encoded := []byte(questdb.QwpMagic + string([]byte{questdb.QwpVersion, questdb.QwpRecString, 1, 't'}))
+	appendSchema := func(tagCount int) {
+		encoded = append(encoded, questdb.QwpRecSchema, 0)
+		encoded = binary.AppendUvarint(encoded, uint64(tagCount))
+		encoded = append(encoded, bytes.Repeat([]byte{0}, tagCount)...)
+		encoded = append(encoded, 0)
+	}
+	appendSchema(1 << 15)
+	appendSchema(1<<15 + 1)
+
+	dec, err := newQwpDecoder(bufio.NewReader(bytes.NewReader(encoded)))
+	if err != nil {
+		t.Fatalf("newQwpDecoder: %v", err)
+	}
+	if _, _, err := dec.next(); err == nil || !strings.Contains(err.Error(), "aggregate schema slots") {
+		t.Fatalf("decode error = %v, want an aggregate schema slots error", err)
+	}
+}
+
+func TestQwpBinaryRowRejectsNonCanonicalPayloads(t *testing.T) {
+	boolRow := append([]byte{2}, make([]byte, 8)...)
+	intRowWithTrailingByte := binary.LittleEndian.AppendUint64(nil, 42)
+	intRowWithTrailingByte = binary.LittleEndian.AppendUint64(intRowWithTrailingByte, 123)
+	intRowWithTrailingByte = append(intRowWithTrailingByte, 0xff)
+
+	cases := []struct {
+		name   string
+		schema *qwpSchema
+		row    []byte
+	}{
+		{
+			name:   "invalid boolean",
+			schema: &qwpSchema{table: "cpu", fieldKeys: []string{"active"}, fieldType: []byte{questdb.QwpTypeBool}},
+			row:    boolRow,
+		},
+		{
+			name:   "trailing row data",
+			schema: &qwpSchema{table: "cpu", fieldKeys: []string{"usage"}, fieldType: []byte{questdb.QwpTypeInt64}},
+			row:    intRowWithTrailingByte,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p, sender := newTestQwpProcessor()
+			if err := p.writeBinaryRow(tc.schema, tc.row, nil); err == nil {
+				t.Fatal("writeBinaryRow accepted a non-canonical payload")
+			}
+			if len(sender.rows) != 0 {
+				t.Fatalf("malformed payload wrote %d rows", len(sender.rows))
+			}
+		})
+	}
+}
+
+func TestQwpDecoderCapsDictionaryAndSchemas(t *testing.T) {
+	t.Run("dictionary", func(t *testing.T) {
+		encoded := []byte(questdb.QwpMagic + string([]byte{questdb.QwpVersion, questdb.QwpRecString, 0}))
+		dec, err := newQwpDecoder(bufio.NewReader(bytes.NewReader(encoded)))
+		if err != nil {
+			t.Fatalf("newQwpDecoder: %v", err)
+		}
+		dec.strings = make([]string, 1<<20)
+		if _, _, err := dec.next(); err == nil || !strings.Contains(err.Error(), "exceeds limit") {
+			t.Fatalf("decode error = %v, want a dictionary exceeds-limit error", err)
+		}
+	})
+
+	t.Run("schemas", func(t *testing.T) {
+		encoded := []byte(questdb.QwpMagic + string([]byte{questdb.QwpVersion, questdb.QwpRecSchema, 0, 0, 0}))
+		dec, err := newQwpDecoder(bufio.NewReader(bytes.NewReader(encoded)))
+		if err != nil {
+			t.Fatalf("newQwpDecoder: %v", err)
+		}
+		dec.strings = []string{"table"}
+		dec.schemas = make([]*qwpSchema, 1<<16)
+		if _, _, err := dec.next(); err == nil || !strings.Contains(err.Error(), "exceeds limit") {
+			t.Fatalf("decode error = %v, want a schema exceeds-limit error", err)
+		}
+	})
 }
 
 // benchPoint is the point BenchmarkQwpWriteRow's line describes: a

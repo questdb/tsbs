@@ -45,7 +45,14 @@ The loader detects the format from the file itself (a `questdb-qwp` file starts
 with the magic `QWPB`), so no flag selects it. Loading a binary file with
 `--protocol=ilp` is refused rather than silently mis-sent.
 
-The binary format avoids line-protocol parsing in the loader. Queries are
+The binary format avoids line-protocol parsing in the loader. The decoder
+rejects dictionary strings larger than 1 MiB, rows larger than 4 MiB, more than
+1,048,576 dictionary entries, more than 16 MiB of aggregate dictionary text,
+more than 65,536 schemas, more than 65,536 tags or fields in one schema, or more
+than 65,536 aggregate schema tag-and-field slots. It also rejects non-canonical
+booleans and trailing row data. These limits accommodate the existing
+million-host workloads while preventing malformed input from selecting
+unbounded allocations. Queries are
 unaffected: generate them with `--format questdb` in both cases.
 
 ```bash
@@ -177,10 +184,11 @@ with them.
 
 **`--qwp-close-timeout-ms`** (type: `uint`, default: `60000`)
 
-How long the loader explicitly waits for each worker's last published FSN before
-closing the sender. The value must be greater than zero. This benchmark-level
-acknowledgement barrier also applies when `--qwp-conf` supplies a custom client
-close configuration; a timeout reports failure rather than claiming success.
+One per-worker deadline covers both the explicit wait for the last published FSN
+and the sender close. The value must be greater than zero. The sender is still
+asked to close if acknowledgement fails. This benchmark-level deadline also
+applies when `--qwp-conf` supplies a custom client close configuration; a timeout
+reports failure rather than claiming success.
 
 **`--qwp-sf-dir`** (type: `string`, default: empty)
 
@@ -193,8 +201,8 @@ is not part of the benchmark, and report durable-ingest runs as a separate mode.
 Full QWIP client configuration string, for example
 `ws::addr=host:9000;auto_flush=off;`. Overrides the QWIP client connection flags,
 so any client option can be set even when it has no dedicated flag. The loader
-still uses `--qwp-close-timeout-ms` for its explicit final-FSN acknowledgement
-barrier.
+still uses `--qwp-close-timeout-ms` as the overall final-acknowledgement and
+sender-close deadline.
 
 **`--ilp-bind-to`** (type: `string`, default `127.0.0.1:9009`)
 

@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -23,13 +26,16 @@ type recordingSender struct {
 	sb   strings.Builder
 	rows []string
 
-	flushes       int
-	awaited       []int64
-	awaitDeadline []time.Time
-	nextFsn       int64
-	closed        bool
-	closeErr      error
-	events        []string
+	flushes              int
+	awaited              []int64
+	awaitDeadline        []time.Time
+	nextFsn              int64
+	closed               bool
+	closeErr             error
+	closeDeadline        time.Time
+	requireCloseDeadline bool
+	blockClose           bool
+	events               []string
 }
 
 func (s *recordingSender) Table(name string) qdb.LineSender {
@@ -96,9 +102,20 @@ func (s *recordingSender) AwaitAckedFsn(ctx context.Context, target int64) error
 	return nil
 }
 
-func (s *recordingSender) Close(_ context.Context) error {
+func (s *recordingSender) Close(ctx context.Context) error {
 	s.closed = true
 	s.events = append(s.events, "close")
+	if s.requireCloseDeadline {
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			return errors.New("close context has no deadline")
+		}
+		s.closeDeadline = deadline
+	}
+	if s.blockClose {
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	return s.closeErr
 }
 
@@ -121,6 +138,42 @@ func newTestILPHTTPProcessor() (*qwpProcessor, *recordingSender) {
 		sender: s,
 		intern: make(map[string]string),
 	}, s
+}
+
+func TestQwpInitTypeMismatchDoesNotExposeSenderConfiguration(t *testing.T) {
+	oldProtocol, oldConf, oldFatal := protocol, qwpConfString, fatal
+	defer func() {
+		protocol, qwpConfString, fatal = oldProtocol, oldConf, oldFatal
+	}()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/settings" {
+			http.NotFound(w, r)
+			return
+		}
+		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer server.Close()
+
+	const secret = "do-not-log-this-token"
+	protocol = protocolQWIP
+	qwpConfString = "http::addr=" + strings.TrimPrefix(server.URL, "http://") + ";token=" + secret + ";"
+	var fatalMessage string
+	fatal = func(format string, args ...interface{}) {
+		fatalMessage = fmt.Sprintf(format, args...)
+	}
+
+	p := &qwpProcessor{}
+	p.Init(0, true, false)
+	if p.sender != nil {
+		defer p.sender.Close(context.Background())
+	}
+	if !strings.Contains(fatalMessage, "did not yield a QWP sender") {
+		t.Fatalf("Init did not reach the non-QWP sender error: %q", fatalMessage)
+	}
+	if strings.Contains(fatalMessage, secret) {
+		t.Fatalf("Init error exposed sender credentials: %q", fatalMessage)
+	}
 }
 
 func TestIngestionProtocolContract(t *testing.T) {
@@ -398,6 +451,32 @@ func TestQwpCloseAwaitsLastPublishedFsnBeforeSenderClose(t *testing.T) {
 				t.Errorf("deadline remaining = %v, want approximately %v", remaining, want)
 			}
 		})
+	}
+}
+
+func TestQwpCloseTimeoutAlsoBoundsSenderClose(t *testing.T) {
+	oldTimeout := qwpCloseTimeoutMs
+	defer func() { qwpCloseTimeoutMs = oldTimeout }()
+	qwpCloseTimeoutMs = 20
+
+	p, s := newTestQwpProcessor()
+	s.requireCloseDeadline = true
+	s.blockClose = true
+	if err := p.flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	before := time.Now()
+	err := p.closeSender()
+	elapsed := time.Since(before)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("closeSender error = %v, want context deadline exceeded", err)
+	}
+	if s.closeDeadline.IsZero() {
+		t.Fatal("sender Close did not receive a deadline")
+	}
+	if elapsed < 10*time.Millisecond || elapsed > 500*time.Millisecond {
+		t.Fatalf("closeSender elapsed = %v, want the configured 20ms bound", elapsed)
 	}
 }
 

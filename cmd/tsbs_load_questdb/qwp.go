@@ -68,7 +68,7 @@ func (p *qwpProcessor) Init(numWorker int, doLoad, _ bool) {
 	if protocol == protocolQWIP {
 		qwp, ok := sender.(qdb.QwpSender)
 		if !ok {
-			fatal("configuration %q did not yield a QWP sender, use the ws:: or wss:: scheme", conf)
+			fatal("configured sender did not yield a QWP sender, use the ws:: or wss:: scheme")
 			return
 		}
 		p.qwp = qwp
@@ -88,20 +88,27 @@ func (p *qwpProcessor) Close(doLoad bool) {
 }
 
 func (p *qwpProcessor) closeSender() error {
+	closeCtx := p.ctx
+	cancel := func() {}
 	var ackErr error
-	if p.qwp != nil && p.hasPublished {
+	if p.qwp != nil {
 		if err := validateQwpAckTimeout(protocolQWIP, qwpCloseTimeoutMs); err != nil {
 			ackErr = err
-		} else {
-			ackCtx, cancel := context.WithTimeout(p.ctx, time.Duration(qwpCloseTimeoutMs)*time.Millisecond)
-			if err := p.qwp.AwaitAckedFsn(ackCtx, p.lastFsn); err != nil {
-				ackErr = fmt.Errorf("failed to await final QWIP ack for fsn %d: %w", p.lastFsn, err)
-			}
+			closeCtx, cancel = context.WithCancel(p.ctx)
 			cancel()
+		} else {
+			closeCtx, cancel = context.WithTimeout(p.ctx, time.Duration(qwpCloseTimeoutMs)*time.Millisecond)
+		}
+	}
+	defer cancel()
+
+	if p.qwp != nil && p.hasPublished && ackErr == nil {
+		if err := p.qwp.AwaitAckedFsn(closeCtx, p.lastFsn); err != nil {
+			ackErr = fmt.Errorf("failed to await final QWIP ack for fsn %d: %w", p.lastFsn, err)
 		}
 	}
 
-	closeErr := p.sender.Close(p.ctx)
+	closeErr := p.sender.Close(closeCtx)
 	if closeErr != nil {
 		closeErr = fmt.Errorf("failed to close client: %w", closeErr)
 	}

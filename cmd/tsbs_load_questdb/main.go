@@ -118,7 +118,7 @@ func init() {
 	pflag.CommandLine.String("qwp-sf-dir", "", "QWP store-and-forward directory. Empty means memory mode, which is what a throughput benchmark wants")
 	pflag.CommandLine.Bool("qwp-await-ack", false, "Wait for the server to acknowledge every batch before counting it. Slower, but every reported row is server-confirmed when counted")
 	pflag.CommandLine.Bool("qwp-nano-timestamps", false, "Send nanosecond designated timestamps over QWP. Off by default so that the table matches the one the ILP path creates, which is microsecond resolution")
-	pflag.CommandLine.Uint("qwp-close-timeout-ms", 60000, "How long Close waits for the server to acknowledge outstanding batches. Close is the loader's ack barrier, so this bounds the wait for the last batches of a run")
+	pflag.CommandLine.Uint("qwp-close-timeout-ms", 60000, "Overall QWIP shutdown deadline for final acknowledgement and sender close")
 	target.TargetSpecificFlags("", pflag.CommandLine)
 	pflag.Parse()
 
