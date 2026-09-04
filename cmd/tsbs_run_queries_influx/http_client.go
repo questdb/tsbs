@@ -68,7 +68,7 @@ func (w *HTTPClient) Do(q *query.HTTP, opts *HTTPClientDoOptions) (lag float64, 
 	// populate uri from the reusable byte slice:
 	w.uri = w.uri[:0]
 	w.uri = append(w.uri, w.Host...)
-	//w.uri = append(w.uri, bytesSlash...)
+
 	w.uri = append(w.uri, q.Path...)
 	w.uri = append(w.uri, []byte("&db="+url.QueryEscape(opts.database))...)
 	if opts.chunkSize > 0 {
@@ -77,7 +77,8 @@ func (w *HTTPClient) Do(q *query.HTTP, opts *HTTPClientDoOptions) (lag float64, 
 	}
 
 	// populate a request with data from the Query:
-	req, err := http.NewRequest(string(q.Method), string(w.uri), nil)
+	method := string(q.Method)
+	req, err := http.NewRequest(method, string(w.uri), nil)
 	if err != nil {
 		panic(err)
 	}

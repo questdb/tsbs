@@ -158,19 +158,19 @@ func mockServerStart(cfg mockServerConfig) *mockServer {
 					expectedId := testAuthTokenId + "\n"
 					rc, err := conn.Read(data)
 					if err != nil {
-						fatal("failed to read token id: ", err.Error())
+						fatal("failed to read token id: %s", err.Error())
 					}
 					if rc != len(expectedId) {
-						fatal("unexpected token id len: ", expectedId)
+						fatal("unexpected token id len: %q", expectedId)
 					}
 					actualId := string(data[:rc])
 					if actualId != expectedId {
-						fatal("unexpected token id: ", actualId)
+						fatal("unexpected token id: %q", actualId)
 					}
 
 					_, err = conn.Write([]byte(randStr(512) + "\n"))
 					if err != nil {
-						fatal("failed to write challenge: ", err.Error())
+						fatal("failed to write challenge: %s", err.Error())
 					}
 
 					// The rest is signature + data
@@ -180,7 +180,7 @@ func mockServerStart(cfg mockServerConfig) *mockServer {
 					_, err := conn.Read(data)
 					if err != nil {
 						if err != io.EOF {
-							fatal("failed to read from connection: ", err.Error())
+							fatal("failed to read from connection: %s", err.Error())
 						}
 						return
 					}

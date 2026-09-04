@@ -2,7 +2,8 @@
 
 QuestDB is a high-performance open-source time series database with SQL as a
 query language with time-oriented extensions. QuestDB implements PostgreSQL wire
-protocol, REST API, and supports ingestion using InfluxDB Line Protocol over TCP.
+protocol, REST API, and supports ingestion over both QWP ingress, a binary
+columnar protocol carried on a WebSocket, and InfluxDB Line Protocol over TCP.
 
 This guide explains how the data for TSBS is generated along with additional
 flags available when using the data importer (`tsbs_load_questdb`).
@@ -28,11 +29,187 @@ An example reading from the Dev Ops use case looks like the following:
 cpu,hostname=host_0,region=eu-central-1,datacenter=eu-central-1a,rack=6,os=Ubuntu15.10,arch=x86,team=SF,service=19,service_version=1,service_environment=test usage_user=58i,usage_system=2i,usage_idle=24i,usage_nice=61i,usage_iowait=22i,usage_irq=63i,usage_softirq=6i,usage_steal=44i,usage_guest=80i,usage_guest_nice=38i 1451606400000000000
 ```
 
+## Data formats
+
+Two generator formats target QuestDB:
+
+- **`questdb`**: InfluxDB line protocol text, as described above. Works with
+  all three ingestion protocols.
+- **`questdb-qwp`**: a binary, schema-and-dictionary encoded form of the same
+  points, for QWP ingress and the ILP-over-HTTP client-library transport. Table names, column names and symbol
+  values are written once and referenced by id afterwards, and numbers are
+  written in their native width, so the loader does not parse text at all.
+
+The loader detects the format from the file itself (a `questdb-qwp` file starts
+with the magic `QWPB`), so no flag selects it. Loading a binary file with
+`--protocol=ilp` is refused rather than silently mis-sent.
+
+The binary format avoids line-protocol parsing in the loader. The decoder
+rejects dictionary strings larger than 1 MiB, rows larger than 4 MiB, more than
+1,048,576 dictionary entries, more than 16 MiB of aggregate dictionary text,
+more than 65,536 schemas, more than 65,536 tags or fields in one schema, or more
+than 65,536 aggregate schema tag-and-field slots. It also rejects non-canonical
+booleans and trailing row data. These limits accommodate the existing
+million-host workloads while preventing malformed input from selecting
+unbounded allocations. Queries are
+unaffected: generate them with `--format questdb` in both cases.
+
+```bash
+./tsbs_generate_data \
+  --use-case="cpu-only" --seed=123 --scale=100 \
+  --timestamp-start="2016-01-01T00:00:00Z" --timestamp-end="2016-01-02T00:00:00Z" \
+  --log-interval="10s" --format="questdb-qwp" > /tmp/data_qwp
+
+./tsbs_load_questdb --file /tmp/data_qwp --workers 8 --protocol qwp
+```
+
+## Ingestion protocols
+
+The loader can ingest over three protocols, selected with `--protocol`:
+
+- **`qwp`**: QWP ingress, a binary columnar protocol spoken over a WebSocket on
+  the main HTTP port (9000). One sender per worker,
+  flushed on every TSBS batch boundary.
+- **`ilp-http`**: line protocol over HTTP on port 9000, sent with the client
+  library rather than by hand.
+- **`ilp`**: the original path, hand-written line protocol text written straight
+  to the TCP port (9009). It is what TSBS has always measured, and every other
+  TSBS target speaks a text line protocol over a socket.
+
+### What a completed write means
+
+The three differ, which matters when quoting a rate:
+
+- **`ilp`** is fire-and-forget: the write returns once the bytes reach the
+  socket buffer and the server never acknowledges them. Its reported rate is
+  bytes-on-wire, and overstates committed throughput.
+- **`ilp-http`** is request/response: a successful flush means the server
+  processed that batch.
+- **`qwp`** publishes each batch to the sender's cursor engine and a background
+  goroutine delivers it, so a flush means "published", not "committed". At the
+  end of the run the loader explicitly awaits each worker's last published FSN
+  with a bounded context before closing its sender. A successful QWP ingress run is
+  therefore server-confirmed independently of the client's close configuration.
+  Use `--qwp-await-ack` if every intermediate report must be acknowledged too;
+  that serialises the pipeline.
+
+Whichever you use, confirming the row count from the server afterwards is the
+only measurement that is comparable across all three.
+
+QWP ingress and egress support lives in
+`github.com/questdb/go-questdb-client/v4`. The latest tagged release, `v4.2.0`,
+is six commits behind the required QWP APIs, so `go.mod` pins the exact post-tag
+commit `4f2723e2d5cb5a9beea62dce16f932e56ee30e78`. Upgrade to the first tagged release
+containing these APIs before publishing benchmark results.
+
+## Query transports
+
+`tsbs_run_queries_questdb` can send the generated queries three ways, selected
+with `--query-protocol`:
+
+| Value | Transport | Port | Notes |
+|---|---|---|---|
+| `pgwire` | PostgreSQL wire (pgx v5) | 8812 | Default |
+| `http` | REST `/exec`, JSON results | 9000 | The original TSBS path. `--use-http` still selects it |
+| `qwp` | QWP egress, columnar result batches | 9000 | Uses the main HTTP port |
+
+All three run semantically equivalent generated queries. The legacy HTTP path
+sends SQL with scalar values literalized, while pgwire and QWP egress share the same
+parameterized SQL and scalar binds (with generated array parameters inlined).
+This can produce different parse or planning costs in addition to the transport
+and result-format differences. Query files remain protocol-independent, so one
+file set feeds all three without regeneration.
+
+```bash
+./tsbs_run_queries_questdb --file /tmp/queries_questdb --query-protocol qwp
+./tsbs_run_queries_questdb --file /tmp/queries_questdb --query-protocol pgwire
+./tsbs_run_queries_questdb --file /tmp/queries_questdb --query-protocol http
+```
+
+QWP egress returns results as columnar batches rather than JSON. The runner drains all
+batches before recording the query latency.
+
+## `tsbs_run_queries_questdb` additional flags
+
+**`--query-protocol`** (type: `string`, default: `pgwire`)
+
+Query transport: `pgwire`, `http` or `qwp`.
+
+**`--qwp-addr`** (type: `string`, default `127.0.0.1:9000`)
+
+QWP egress WebSocket endpoint for `--query-protocol=qwp`. A comma-separated list
+enables failover.
+
+**`--qwp-conf`** (type: `string`, default: empty)
+
+Full QWP egress client configuration string, overriding the other QWP connection
+flags.
+
+**`--qwp-tls`** (type: `boolean`, default: `false`)
+
+Use TLS for QWP egress. The certificate check is disabled, so the client trusts any
+server. Combine with `--username` and `--password` for authentication.
+
 ## `tsbs_load_questdb` additional flags
+
+**`--protocol`** (type: `string`, default: `ilp`)
+
+Ingestion protocol: `ilp`, `ilp-http` or `qwp`.
+
+**`--ilp-http-addr`** (type: `string`, default `127.0.0.1:9000`)
+
+QuestDB HTTP endpoint for `--protocol=ilp-http`, in the format `<ip>:<port>`.
+
+**`--qwp-addr`** (type: `string`, default `127.0.0.1:9000`)
+
+QWP ingress WebSocket endpoint in the format `<ip>:<port>`. A
+comma-separated list of endpoints enables client-side failover, walked in
+priority order on connect and reconnect.
+
+**`--qwp-await-ack`** (type: `boolean`, default: `false`)
+
+Wait for the server to acknowledge every QWP ingress batch before counting it.
+
+**`--qwp-nano-timestamps`** (type: `boolean`, default: `false`)
+
+Send nanosecond designated timestamps. Off by default so that a QWP ingress run creates
+the same table as an ILP run, whose designated timestamp is microsecond
+resolution: the two protocols can then load into the same table, and the
+generated data has whole-second timestamps, so nothing is lost. Turning it on
+makes the designated column `TIMESTAMP_NS`, which an ILP-created table cannot
+accept.
+
+**`--qwp-user`, `--qwp-password`, `--qwp-token`** (type: `string`)
+
+Basic auth credentials or bearer token for QWP ingress. Both imply TLS, so pass `--tls`
+with them.
+
+**`--qwp-close-timeout-ms`** (type: `uint`, default: `60000`)
+
+One per-worker deadline covers both the explicit wait for the last published FSN
+and the sender close. The value must be greater than zero. The sender is still
+asked to close if acknowledgement fails. This benchmark-level deadline also
+applies when `--qwp-conf` supplies a custom client close configuration; a timeout
+reports failure rather than claiming success.
+
+**`--qwp-sf-dir`** (type: `string`, default: empty)
+
+Store-and-forward directory. When set, unacknowledged frames spill to disk and
+replay after a reconnect or a process restart. Leave it empty when durable replay
+is not part of the benchmark, and report durable-ingest runs as a separate mode.
+
+**`--qwp-conf`** (type: `string`, default: empty)
+
+Full QWP ingress client configuration string, for example
+`ws::addr=host:9000;auto_flush=off;`. Overrides the QWP client connection flags,
+so any client option can be set even when it has no dedicated flag. The loader
+still uses `--qwp-close-timeout-ms` as the overall final-acknowledgement and
+sender-close deadline.
 
 **`--ilp-bind-to`** (type: `string`, default `127.0.0.1:9009`)
 
-QuestDB InfluxDB line protocol TCP port in the format `<ip>:<port>`
+QuestDB InfluxDB line protocol TCP port in the format `<ip>:<port>`. Only used
+with `--protocol=ilp`.
 
 **`--url`** (type: `string`, default: `http://localhost:9000/`)
 
@@ -90,6 +267,19 @@ Generated data can be loaded directly using the tool:
 ./tsbs_load_questdb --file /tmp/data --workers 4
 ```
 
+That ingests over ILP/TCP, the default. To load the same text over line protocol
+on HTTP:
+
+```bash
+./tsbs_load_questdb --file /tmp/data --workers 4 --protocol ilp-http
+```
+
+Or over QWP ingress:
+
+```bash
+./tsbs_load_questdb --file /tmp/data --workers 4 --protocol qwp
+```
+
 ### Query benchmarks for Dev Ops data set (single-groupby-5-8-1 type)
 
 Queries are generated using the `questdb` format.
@@ -133,19 +323,40 @@ cd ~/tmp/go/src/github.com/questdb/
 
 ### TLS and authentication support
 
-The ingestion benchmark tool supports InfluxDB Line Protocol authentication as
-well as TLS encryption:
+Over QWP ingress, the ingestion benchmark tool supports basic authentication or
+a bearer token, both over TLS:
+```bash
+./tsbs_load_questdb --file /tmp/data --workers 4 --protocol qwp \
+  --tls \
+  --qwp-user user \
+  --qwp-password quest
+```
+
+Over ILP, it supports InfluxDB Line Protocol token authentication as well as TLS
+encryption:
 ```bash
 ./tsbs_load_questdb --file /tmp/data --workers 4 \
+  --protocol ilp \
   --tls \
   --auth-id "my_user" \
   --auth-token "GwBXoGG5c6NoUTLXnzMxw_uNiVa8PKobzx5EiuylMW0"
 ```
 
-The query benchmark tool also supports basic HTTP authentication and TLS encryption:
+The query benchmark tool also supports basic authentication and TLS encryption,
+over HTTP:
 ```bash
 ./tsbs_run_queries_questdb --file /tmp/queries_questdb \
+  --query-protocol http \
   --url "https://localhost:9000" \
+  --username user \
+  --password quest
+```
+and over QWP egress:
+```bash
+./tsbs_run_queries_questdb --file /tmp/queries_questdb \
+  --query-protocol qwp \
+  --qwp-addr localhost:9000 \
+  --qwp-tls \
   --username user \
   --password quest
 ```

@@ -1,15 +1,15 @@
 // tsbs_run_queries_questdb speed tests QuestDB using requests from stdin or file.
 //
 // It reads encoded Query objects from stdin or file, and makes concurrent requests
-// to the provided endpoint. Supports both HTTP/JSON and PostgreSQL wire protocol (pgx v5).
+// to the provided endpoint. Three transports are supported, selected with
+// --query-protocol: PostgreSQL wire (pgx v5, the default), HTTP/JSON on the REST
+// endpoint, and QWP egress, which streams results back as columnar batches.
 package main
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"net/url"
-	"strings"
 	"time"
 
 	"github.com/blagojts/viper"
@@ -19,8 +19,30 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// Query transports supported by this runner.
+const (
+	protocolPGWire       = "pgwire"
+	protocolHTTP         = "http"
+	protocolQWP          = "qwp"
+	defaultQueryProtocol = protocolPGWire
+)
+
+func resolveQueryProtocol(value string, useHTTP bool) (string, error) {
+	if useHTTP && value == protocolPGWire {
+		return protocolHTTP, nil
+	}
+	switch value {
+	case protocolPGWire, protocolHTTP, protocolQWP:
+		return value, nil
+	default:
+		return "", fmt.Errorf("unknown query protocol %q, expected %q, %q or %q",
+			value, protocolPGWire, protocolHTTP, protocolQWP)
+	}
+}
+
 // Program option vars:
 var (
+	protocol string
 	restURL  string
 	username string
 	password string
@@ -31,6 +53,10 @@ var (
 	pgUser   string
 	pgPass   string
 	pgDBName string
+	// QWP mode options
+	qwpAddr      string
+	qwpQueryConf string
+	qwpUseTLS    bool
 )
 
 // Global vars:
@@ -51,10 +77,18 @@ func init() {
 	pflag.String("pg-db", "qdb", "PostgreSQL database name")
 
 	// HTTP options (legacy mode)
-	pflag.Bool("use-http", false, "Use HTTP REST API instead of PostgreSQL wire protocol")
+	pflag.Bool("use-http", false, "Use HTTP REST API instead of PostgreSQL wire protocol. Deprecated, same as --query-protocol=http")
 	pflag.String("url", "http://localhost:9000/", "Server URL for HTTP mode")
-	pflag.String("username", "", "Basic auth username (HTTP mode)")
-	pflag.String("password", "", "Basic auth password (HTTP mode)")
+	pflag.String("username", "", "Basic auth username (HTTP and QWP modes)")
+	pflag.String("password", "", "Basic auth password (HTTP and QWP modes)")
+
+	// Query transport
+	pflag.String("query-protocol", defaultQueryProtocol, "Query transport: 'pgwire' (PostgreSQL wire), 'http' (REST /exec), or 'qwp' (QWP egress over WebSocket)")
+
+	// QWP options
+	pflag.String("qwp-addr", "127.0.0.1:9000", "QuestDB wire protocol WebSocket ip:port. Comma-separated list enables failover")
+	pflag.String("qwp-conf", "", "Full QWP query client configuration string. Overrides every other QWP connection flag")
+	pflag.Bool("qwp-tls", false, "Use TLS for QWP. The certificate check is disabled, so the client will trust any server")
 
 	pflag.Parse()
 
@@ -79,6 +113,15 @@ func init() {
 	username = viper.GetString("username")
 	password = viper.GetString("password")
 
+	qwpAddr = viper.GetString("qwp-addr")
+	qwpQueryConf = viper.GetString("qwp-conf")
+	qwpUseTLS = viper.GetBool("qwp-tls")
+
+	protocol, err = resolveQueryProtocol(viper.GetString("query-protocol"), useHTTP)
+	if err != nil {
+		panic(err)
+	}
+
 	runner = query.NewBenchmarkRunner(config)
 }
 
@@ -90,6 +133,8 @@ type processor struct {
 	// HTTP mode
 	httpClient *HTTPClient
 	httpOpts   *HTTPClientDoOptions
+	// QWP mode
+	qwpClient *QwpClient
 	// pgx mode
 	conn *pgx.Conn
 	ctx  context.Context
@@ -98,7 +143,8 @@ type processor struct {
 func newProcessor() query.Processor { return &processor{} }
 
 func (p *processor) Init(workerNumber int) {
-	if useHTTP {
+	switch protocol {
+	case protocolHTTP:
 		p.httpOpts = &HTTPClientDoOptions{
 			Username:             username,
 			Password:             password,
@@ -106,7 +152,18 @@ func (p *processor) Init(workerNumber int) {
 			PrettyPrintResponses: runner.DoPrintResponses(),
 		}
 		p.httpClient = NewHTTPClient(restURL)
-	} else {
+	case protocolQWP:
+		// One query client per worker: a client is not safe for
+		// concurrent Query calls.
+		client, err := NewQwpClient(qwpConf(), &QwpClientDoOptions{
+			Debug:                runner.DebugLevel(),
+			PrettyPrintResponses: runner.DoPrintResponses(),
+		})
+		if err != nil {
+			panic(fmt.Sprintf("Unable to connect to QuestDB via QWP: %v", err))
+		}
+		p.qwpClient = client
+	default:
 		connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
 			pgHost, pgPort, pgUser, pgPass, pgDBName)
 		p.ctx = context.Background()
@@ -124,9 +181,12 @@ func (p *processor) ProcessQuery(q query.Query, _ bool) ([]*query.Stat, error) {
 	var lag float64
 	var err error
 
-	if useHTTP {
+	switch protocol {
+	case protocolHTTP:
 		lag, err = p.httpClient.Do(hq, p.httpOpts)
-	} else {
+	case protocolQWP:
+		lag, err = p.qwpClient.Do(hq)
+	default:
 		lag, err = p.processQueryPgx(hq)
 	}
 
@@ -138,113 +198,34 @@ func (p *processor) ProcessQuery(q query.Query, _ bool) ([]*query.Stat, error) {
 	return []*query.Stat{stat}, nil
 }
 
-func (p *processor) Close() {
+func (p *processor) Close() error {
+	var pgErr, qwpErr error
 	if p.conn != nil {
-		p.conn.Close(p.ctx)
+		pgErr = p.conn.Close(p.ctx)
 	}
+	if p.qwpClient != nil {
+		qwpErr = p.qwpClient.Close()
+	}
+	return errors.Join(pgErr, qwpErr)
 }
 
-// processQueryPgx extracts SQL from HTTP query and runs it via native pgx v5
-// Supports parameterized queries with bind variables for better performance
+// processQueryPgx runs a query via native pgx v5, using bind variables
+// for the parameters the query carries.
 func (p *processor) processQueryPgx(hq *query.HTTP) (float64, error) {
-	// Check if query has parameters in Body (new parameterized format)
-	if len(hq.Body) > 0 && len(hq.RawQuery) > 0 {
-		return p.processQueryPgxWithParams(hq)
-	}
-
-	// Fall back to legacy non-parameterized path extraction
-	pathStr := string(hq.Path)
-
-	// Parse URL to extract query parameter
-	// The path looks like: /exec?count=false&query=SELECT...
-	if idx := strings.Index(pathStr, "?"); idx != -1 {
-		queryStr := pathStr[idx+1:]
-		values, err := url.ParseQuery(queryStr)
-		if err != nil {
-			return 0, fmt.Errorf("failed to parse query params: %v", err)
-		}
-
-		sqlQuery := values.Get("query")
-		if sqlQuery == "" {
-			return 0, fmt.Errorf("no SQL query found in path: %s", pathStr)
-		}
-
-		start := time.Now()
-
-		// Use native pgx Query (not database/sql) for better performance
-		rows, err := p.conn.Query(p.ctx, sqlQuery)
-		if err != nil {
-			return 0, fmt.Errorf("query failed: %v", err)
-		}
-
-		// Fetch all rows - same approach as TimescaleDB benchmark
-		for rows.Next() {
-		}
-		rows.Close()
-
-		if err := rows.Err(); err != nil {
-			return 0, fmt.Errorf("row iteration error: %v", err)
-		}
-
-		lag := float64(time.Since(start).Nanoseconds()) / 1e6 // milliseconds
-		return lag, nil
-	}
-
-	return 0, fmt.Errorf("invalid path format: %s", pathStr)
-}
-
-// processQueryPgxWithParams executes parameterized query with bind variables
-// Arrays are inlined since QuestDB doesn't support array bind params for IN clause
-func (p *processor) processQueryPgxWithParams(hq *query.HTTP) (float64, error) {
-	sqlTemplate := string(hq.RawQuery)
-
-	// Parse parameters from JSON in Body
-	var rawParams []interface{}
-	if err := json.Unmarshal(hq.Body, &rawParams); err != nil {
-		return 0, fmt.Errorf("failed to parse query params JSON: %v", err)
-	}
-
-	// First pass: inline arrays and track which original indices are kept
-	var params []interface{}
-	inlinedIndices := make(map[int]bool)
-	for i, raw := range rawParams {
-		switch v := raw.(type) {
-		case []interface{}:
-			// Inline array values in SQL (QuestDB doesn't support array bind params)
-			placeholder := fmt.Sprintf("$%d", i+1)
-			var quoted []string
-			for _, item := range v {
-				quoted = append(quoted, fmt.Sprintf("'%v'", item))
-			}
-			inlineList := "(" + strings.Join(quoted, ",") + ")"
-			sqlTemplate = strings.Replace(sqlTemplate, placeholder, inlineList, 1)
-			inlinedIndices[i+1] = true
-		default:
-			params = append(params, v)
-		}
-	}
-
-	// Second pass: renumber remaining placeholders
-	// Build mapping from old index to new index
-	newIdx := 1
-	for origIdx := 1; origIdx <= len(rawParams); origIdx++ {
-		if !inlinedIndices[origIdx] {
-			if origIdx != newIdx {
-				sqlTemplate = strings.ReplaceAll(sqlTemplate, fmt.Sprintf("$%d", origIdx), fmt.Sprintf("$%d", newIdx))
-			}
-			newIdx++
-		}
+	sqlQuery, params, err := sqlFromQuery(hq)
+	if err != nil {
+		return 0, err
 	}
 
 	start := time.Now()
 
-	// Use Query with prepared statement-style execution
-	rows, err := p.conn.Query(p.ctx, sqlTemplate, params...)
+	// Use native pgx Query (not database/sql) for better performance
+	rows, err := p.conn.Query(p.ctx, sqlQuery, params...)
 	if err != nil {
-		return 0, fmt.Errorf("parameterized query failed: %v (sql: %s)", err, sqlTemplate)
+		return 0, fmt.Errorf("query failed: %v (sql: %s)", err, sqlQuery)
 	}
 
-	// Fetch all rows
+	// Fetch all rows - same approach as TimescaleDB benchmark
 	for rows.Next() {
 	}
 	rows.Close()

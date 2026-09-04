@@ -57,7 +57,7 @@ func (d *fileDataSource) Headers() *common.GeneratedDataHeaders {
 
 	tagsarr := strings.Split(tags, ",")
 	if tagsarr[0] != tagsKey {
-		fatal("input header in wrong format. got '%s', expected 'tags'", tags[0])
+		fatal("input header in wrong format. got '%s', expected 'tags'", tagsarr[0])
 	}
 	tagNames, tagTypes := extractTagNamesAndTypes(tagsarr[1:])
 	fieldKeys := make(map[string][]string)

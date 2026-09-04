@@ -213,6 +213,11 @@ func TestFileDataSourceHeaders(t *testing.T) {
 			wantCols:  map[string]string{"cols": "col1,col2", "cols2": "col21,col22"},
 		},
 		{
+			desc:        "invalid tags header",
+			input:       "invalid,tag1 tag\ncols,col1\n\n",
+			shouldFatal: true,
+		},
+		{
 			desc:        "too few lines",
 			input:       "tags\ncols\n",
 			shouldFatal: true,
