@@ -156,7 +156,7 @@ func TestQwpInitTypeMismatchDoesNotExposeSenderConfiguration(t *testing.T) {
 	defer server.Close()
 
 	const secret = "do-not-log-this-token"
-	protocol = protocolQWIP
+	protocol = protocolQWP
 	qwpConfString = "http::addr=" + strings.TrimPrefix(server.URL, "http://") + ";token=" + secret + ";"
 	var fatalMessage string
 	fatal = func(format string, args ...interface{}) {
@@ -180,12 +180,12 @@ func TestIngestionProtocolContract(t *testing.T) {
 	if defaultIngestionProtocol != protocolILP {
 		t.Fatalf("default ingestion protocol = %q", defaultIngestionProtocol)
 	}
-	for _, value := range []string{"ilp", "ilp-http", "qwip"} {
+	for _, value := range []string{"ilp", "ilp-http", "qwp"} {
 		if err := validateIngestionProtocol(value); err != nil {
 			t.Errorf("validateIngestionProtocol(%q): %v", value, err)
 		}
 	}
-	for _, value := range []string{"", "qwp", "QWIP", " qwip", "qwip "} {
+	for _, value := range []string{"", "qwip", "qwep", "QWP", " qwp", "qwp "} {
 		if err := validateIngestionProtocol(value); err == nil {
 			t.Errorf("validateIngestionProtocol(%q) succeeded", value)
 		}
@@ -481,11 +481,11 @@ func TestQwpCloseTimeoutAlsoBoundsSenderClose(t *testing.T) {
 }
 
 func TestQwpZeroCloseTimeoutIsRejectedAndCannotSkipAckSilently(t *testing.T) {
-	if err := validateQwpAckTimeout(protocolQWIP, 0); err == nil {
-		t.Fatal("validateQwpAckTimeout(qwip, 0) succeeded")
+	if err := validateQwpAckTimeout(protocolQWP, 0); err == nil {
+		t.Fatal("validateQwpAckTimeout(qwp, 0) succeeded")
 	}
 	if err := validateQwpAckTimeout(protocolILPHTTP, 0); err != nil {
-		t.Fatalf("ILP/HTTP should not require a QWIP ack timeout: %v", err)
+		t.Fatalf("ILP/HTTP should not require a QWP ingress ack timeout: %v", err)
 	}
 
 	oldTimeout := qwpCloseTimeoutMs

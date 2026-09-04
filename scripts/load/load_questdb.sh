@@ -16,7 +16,7 @@ DATA_FILE_NAME=${DATA_FILE_NAME:-influx-data.gz}
 DATABASE_PORT=${DATABASE_PORT:-9000}
 DATABASE_HEALTH_PORT=${DATABASE_HEALTH_PORT:-9003}
 ILP_PORT=${ILP_PORT:-9009}
-# Ingestion protocol: ilp, ilp-http, or qwip (QuestDB Wire Ingestion Protocol)
+# Ingestion protocol: ilp, ilp-http, or qwp (QWP ingress)
 PROTOCOL=${PROTOCOL:-ilp}
 
 EXE_DIR=${EXE_DIR:-$(dirname $0)}

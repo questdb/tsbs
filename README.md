@@ -10,9 +10,9 @@ to understand why we (QuestDB) created it.
 This fork derives from the original TSBS and includes a number of changes
 such as:
 * Loader optimizations for QuestDB ingestion.
-* QuestDB ingestion over the QuestDB Wire Ingestion Protocol (QWIP), a binary
-columnar protocol, alongside the original InfluxDB line protocol path, and query
-benchmarking over QWEP, PostgreSQL wire or HTTP. See the
+* QuestDB QWP ingress over a binary columnar WebSocket protocol, alongside the
+original InfluxDB line protocol path, and query benchmarking over QWP egress,
+PostgreSQL wire or HTTP. See the
 [QuestDB supplemental docs](docs/questdb.md).
 * A number of bugfixes in query generation.
 * InfluxDB v2 support based on
@@ -158,9 +158,8 @@ Variables needed:
   `questdb-qwp`, `siridb`, `timescaledb` or `victoriametrics`)
 
 _Note for QuestDB: use `questdb` to benchmark ingestion over InfluxDB line
-protocol, and `questdb-qwp` to benchmark ingestion over the QuestDB Wire
-Ingestion Protocol (QWIP). The latter writes the same points in a binary format
-the loader sends without parsing text. See
+protocol, and `questdb-qwp` to benchmark QWP ingress. The latter writes the same
+points in a binary format the loader sends without parsing text. See
 the [supplemental docs](docs/questdb.md)._
 
 Given the above steps you can now generate a dataset (or multiple

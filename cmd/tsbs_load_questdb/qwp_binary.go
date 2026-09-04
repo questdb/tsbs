@@ -269,12 +269,14 @@ func (s *qwpDataSource) Headers() *common.GeneratedDataHeaders { return nil }
 // only ever grow, and the slice headers captured here cover every row the
 // batch contains.
 type qwpBatch struct {
-	buf     []byte
-	rows    uint
-	metrics uint64
-	schemas []*qwpSchema
-	dict    []string
-	scratch []byte
+	dec       *qwpDecoder
+	buf       []byte
+	pooledBuf *[]byte
+	rows      uint
+	metrics   uint64
+	schemas   []*qwpSchema
+	dict      []string
+	scratch   []byte
 }
 
 func (b *qwpBatch) Len() uint {
@@ -284,7 +286,7 @@ func (b *qwpBatch) Len() uint {
 func (b *qwpBatch) Append(item data.LoadedPoint) {
 	p := item.Data.(qwpPoint)
 	b.rows++
-	b.metrics += uint64(len(qwpDec.schemas[p.schemaID].fieldKeys))
+	b.metrics += uint64(len(b.dec.schemas[p.schemaID].fieldKeys))
 
 	b.scratch = b.scratch[:0]
 	b.scratch = binary.AppendUvarint(b.scratch, p.schemaID)
@@ -296,23 +298,27 @@ func (b *qwpBatch) Append(item data.LoadedPoint) {
 	// in this batch. Both tables only grow and their entries are never
 	// rewritten, so a worker reading through these slice headers sees a
 	// consistent view of everything its rows reference.
-	b.schemas = qwpDec.schemas
-	b.dict = qwpDec.strings
+	b.schemas = b.dec.schemas
+	b.dict = b.dec.strings
 }
 
-type qwpFactory struct{}
+type qwpFactory struct {
+	dec *qwpDecoder
+}
 
 // qwpBufPool recycles batch buffers: the loader allocates a fresh batch
 // for every fill, so without a pool a run churns one 4 MiB buffer per
 // batch.
 var qwpBufPool = sync.Pool{
 	New: func() interface{} {
-		return make([]byte, 0, 4*1024*1024)
+		buf := make([]byte, 0, 4*1024*1024)
+		return &buf
 	},
 }
 
 func (f *qwpFactory) New() targets.Batch {
-	return &qwpBatch{buf: qwpBufPool.Get().([]byte)[:0]}
+	pooledBuf := qwpBufPool.Get().(*[]byte)
+	return &qwpBatch{dec: f.dec, buf: (*pooledBuf)[:0], pooledBuf: pooledBuf}
 }
 
 // writeRows decodes the batch and emits every row through the QWP row

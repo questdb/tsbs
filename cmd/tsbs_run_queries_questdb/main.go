@@ -3,8 +3,7 @@
 // It reads encoded Query objects from stdin or file, and makes concurrent requests
 // to the provided endpoint. Three transports are supported, selected with
 // --query-protocol: PostgreSQL wire (pgx v5, the default), HTTP/JSON on the REST
-// endpoint, and QWEP, the QuestDB Wire Execution Protocol that streams results
-// back as columnar batches.
+// endpoint, and QWP egress, which streams results back as columnar batches.
 package main
 
 import (
@@ -24,7 +23,7 @@ import (
 const (
 	protocolPGWire       = "pgwire"
 	protocolHTTP         = "http"
-	protocolQWEP         = "qwep"
+	protocolQWP          = "qwp"
 	defaultQueryProtocol = protocolPGWire
 )
 
@@ -33,11 +32,11 @@ func resolveQueryProtocol(value string, useHTTP bool) (string, error) {
 		return protocolHTTP, nil
 	}
 	switch value {
-	case protocolPGWire, protocolHTTP, protocolQWEP:
+	case protocolPGWire, protocolHTTP, protocolQWP:
 		return value, nil
 	default:
 		return "", fmt.Errorf("unknown query protocol %q, expected %q, %q or %q",
-			value, protocolPGWire, protocolHTTP, protocolQWEP)
+			value, protocolPGWire, protocolHTTP, protocolQWP)
 	}
 }
 
@@ -84,7 +83,7 @@ func init() {
 	pflag.String("password", "", "Basic auth password (HTTP and QWP modes)")
 
 	// Query transport
-	pflag.String("query-protocol", defaultQueryProtocol, "Query transport: 'pgwire' (PostgreSQL wire), 'http' (REST /exec), or 'qwep' (QuestDB Wire Execution Protocol)")
+	pflag.String("query-protocol", defaultQueryProtocol, "Query transport: 'pgwire' (PostgreSQL wire), 'http' (REST /exec), or 'qwp' (QWP egress over WebSocket)")
 
 	// QWP options
 	pflag.String("qwp-addr", "127.0.0.1:9000", "QuestDB wire protocol WebSocket ip:port. Comma-separated list enables failover")
@@ -153,7 +152,7 @@ func (p *processor) Init(workerNumber int) {
 			PrettyPrintResponses: runner.DoPrintResponses(),
 		}
 		p.httpClient = NewHTTPClient(restURL)
-	case protocolQWEP:
+	case protocolQWP:
 		// One query client per worker: a client is not safe for
 		// concurrent Query calls.
 		client, err := NewQwpClient(qwpConf(), &QwpClientDoOptions{
@@ -185,7 +184,7 @@ func (p *processor) ProcessQuery(q query.Query, _ bool) ([]*query.Stat, error) {
 	switch protocol {
 	case protocolHTTP:
 		lag, err = p.httpClient.Do(hq, p.httpOpts)
-	case protocolQWEP:
+	case protocolQWP:
 		lag, err = p.qwpClient.Do(hq)
 	default:
 		lag, err = p.processQueryPgx(hq)

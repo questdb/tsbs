@@ -14,7 +14,7 @@ func TestQueryProtocolContract(t *testing.T) {
 	if defaultQueryProtocol != protocolPGWire {
 		t.Fatalf("default query protocol = %q", defaultQueryProtocol)
 	}
-	for _, value := range []string{"pgwire", "http", "qwep"} {
+	for _, value := range []string{"pgwire", "http", "qwp"} {
 		got, err := resolveQueryProtocol(value, false)
 		if err != nil || got != value {
 			t.Errorf("resolveQueryProtocol(%q, false) = %q, %v", value, got, err)
@@ -23,7 +23,7 @@ func TestQueryProtocolContract(t *testing.T) {
 	if got, err := resolveQueryProtocol("pgwire", true); err != nil || got != "http" {
 		t.Fatalf("legacy use-http = %q, %v", got, err)
 	}
-	for _, value := range []string{"", "pg", "qwp", "QWEP", " qwep"} {
+	for _, value := range []string{"", "pg", "qwip", "qwep", "QWP", " qwp"} {
 		if _, err := resolveQueryProtocol(value, false); err == nil {
 			t.Errorf("resolveQueryProtocol(%q, false) succeeded", value)
 		}
@@ -44,7 +44,7 @@ func TestDrainQwpRowsConsumesAllBatchesAndPropagatesErrors(t *testing.T) {
 		t.Fatalf("rows=%d visited=%d err=%v", rows, visited, err)
 	}
 
-	marker := errors.New("terminal QWEP batch error")
+	marker := errors.New("terminal QWP egress batch error")
 	rows, err = drainQwpRows(func(yield func(int, error) bool) {
 		yield(4, nil)
 		yield(0, marker)

@@ -347,6 +347,52 @@ func TestQwpDecoderCapsDictionaryAndSchemas(t *testing.T) {
 	})
 }
 
+func TestQwpBatchUsesDecoderCapturedByFactory(t *testing.T) {
+	oldDecoder := qwpDec
+	defer func() { qwpDec = oldDecoder }()
+
+	factoryDecoder := &qwpDecoder{
+		strings: []string{"factory"},
+		schemas: []*qwpSchema{{fieldKeys: []string{"one", "two"}}},
+	}
+	otherDecoder := &qwpDecoder{
+		strings: []string{"global"},
+		schemas: []*qwpSchema{{fieldKeys: []string{"wrong"}}},
+	}
+	qwpDec = factoryDecoder
+	factory := (&benchmark{}).GetBatchFactory()
+	qwpDec = otherDecoder
+
+	batch := factory.New().(*qwpBatch)
+	batch.Append(data.NewLoadedPoint(qwpPoint{schemaID: 0, payload: []byte{1}}))
+	if batch.metrics != 2 {
+		t.Fatalf("metrics = %d, want factory decoder's 2", batch.metrics)
+	}
+	if len(batch.schemas) != 1 || batch.schemas[0] != factoryDecoder.schemas[0] {
+		t.Fatal("batch did not snapshot schemas from its factory decoder")
+	}
+	if len(batch.dict) != 1 || batch.dict[0] != "factory" {
+		t.Fatalf("dictionary = %v, want factory decoder dictionary", batch.dict)
+	}
+	(&qwpProcessor{}).processBinaryBatch(batch, false)
+}
+
+func TestQwpBatchBufferPoolDoesNotBoxSlice(t *testing.T) {
+	oldDecoder := qwpDec
+	defer func() { qwpDec = oldDecoder }()
+	qwpDec = &qwpDecoder{}
+	factory := (&benchmark{}).GetBatchFactory()
+	processor := &qwpProcessor{}
+
+	allocs := testing.AllocsPerRun(1000, func() {
+		batch := factory.New().(*qwpBatch)
+		processor.processBinaryBatch(batch, false)
+	})
+	if allocs > 1 {
+		t.Fatalf("batch checkout/return allocations = %.1f, want at most 1", allocs)
+	}
+}
+
 // benchPoint is the point BenchmarkQwpWriteRow's line describes: a
 // cpu-only row with ten tags and ten integer fields. Both benchmarks use
 // it, so their numbers compare directly.

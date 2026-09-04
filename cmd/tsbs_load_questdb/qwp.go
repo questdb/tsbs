@@ -37,7 +37,7 @@ type qwpProcessor struct {
 	sender qdb.LineSender
 	qwp    qdb.QwpSender
 
-	// lastFsn is the most recently published QWIP sequence. Close uses
+	// lastFsn is the most recently published QWP ingress sequence. Close uses
 	// it for an explicit acknowledgement barrier that is independent
 	// of the sender's own close configuration.
 	lastFsn      int64
@@ -65,7 +65,7 @@ func (p *qwpProcessor) Init(numWorker int, doLoad, _ bool) {
 	}
 	p.sender = sender
 
-	if protocol == protocolQWIP {
+	if protocol == protocolQWP {
 		qwp, ok := sender.(qdb.QwpSender)
 		if !ok {
 			fatal("configured sender did not yield a QWP sender, use the ws:: or wss:: scheme")
@@ -75,7 +75,7 @@ func (p *qwpProcessor) Init(numWorker int, doLoad, _ bool) {
 	}
 }
 
-// Close explicitly waits for the last published QWIP sequence before
+// Close explicitly waits for the last published QWP ingress sequence before
 // closing the client. The benchmark's acknowledgement guarantee therefore
 // does not depend on close_flush_timeout_millis in a custom client config.
 func (p *qwpProcessor) Close(doLoad bool) {
@@ -92,7 +92,7 @@ func (p *qwpProcessor) closeSender() error {
 	cancel := func() {}
 	var ackErr error
 	if p.qwp != nil {
-		if err := validateQwpAckTimeout(protocolQWIP, qwpCloseTimeoutMs); err != nil {
+		if err := validateQwpAckTimeout(protocolQWP, qwpCloseTimeoutMs); err != nil {
 			ackErr = err
 			closeCtx, cancel = context.WithCancel(p.ctx)
 			cancel()
@@ -104,7 +104,7 @@ func (p *qwpProcessor) closeSender() error {
 
 	if p.qwp != nil && p.hasPublished && ackErr == nil {
 		if err := p.qwp.AwaitAckedFsn(closeCtx, p.lastFsn); err != nil {
-			ackErr = fmt.Errorf("failed to await final QWIP ack for fsn %d: %w", p.lastFsn, err)
+			ackErr = fmt.Errorf("failed to await final QWP ingress ack for fsn %d: %w", p.lastFsn, err)
 		}
 	}
 
@@ -170,8 +170,10 @@ func (p *qwpProcessor) processBinaryBatch(b *qwpBatch, doLoad bool) (uint64, uin
 	metricCnt := b.metrics
 	rowCnt := b.rows
 
-	// Return the batch buffer to the pool.
-	qwpBufPool.Put(b.buf[:0])
+	// Return the batch buffer to the pool without boxing the slice header.
+	*b.pooledBuf = b.buf[:0]
+	qwpBufPool.Put(b.pooledBuf)
+	b.pooledBuf = nil
 	b.buf = nil
 	return metricCnt, uint64(rowCnt)
 }

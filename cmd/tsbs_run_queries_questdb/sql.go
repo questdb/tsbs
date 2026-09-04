@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/questdb/tsbs/pkg/query"
@@ -20,7 +21,7 @@ import (
 // only an HTTP path with the SQL in its query string; those return no
 // parameters.
 //
-// Pgwire and QWEP share this scalar-bind path. The legacy HTTP transport
+// Pgwire and QWP egress share this scalar-bind path. The legacy HTTP transport
 // sends hq.Path, where generated scalar values are literalized instead. The
 // generated queries are semantically equivalent across all three transports,
 // but their SQL text and bind mechanism are not identical.
@@ -54,32 +55,154 @@ func inlineArrayParams(sqlTemplate string, body []byte) (string, []interface{}, 
 	}
 
 	var params []interface{}
-	inlinedIndices := make(map[int]bool)
+	replacements := make([]string, len(rawParams)+1)
 	for i, raw := range rawParams {
+		origIdx := i + 1
 		switch v := raw.(type) {
 		case []interface{}:
-			placeholder := fmt.Sprintf("$%d", i+1)
-			var quoted []string
+			quoted := make([]string, 0, len(v))
 			for _, item := range v {
-				quoted = append(quoted, fmt.Sprintf("'%v'", item))
+				value := strings.ReplaceAll(fmt.Sprint(item), "'", "''")
+				quoted = append(quoted, "'"+value+"'")
 			}
-			inlineList := "(" + strings.Join(quoted, ",") + ")"
-			sqlTemplate = strings.Replace(sqlTemplate, placeholder, inlineList, 1)
-			inlinedIndices[i+1] = true
+			replacements[origIdx] = "(" + strings.Join(quoted, ",") + ")"
 		default:
 			params = append(params, v)
+			replacements[origIdx] = fmt.Sprintf("$%d", len(params))
 		}
 	}
 
-	newIdx := 1
-	for origIdx := 1; origIdx <= len(rawParams); origIdx++ {
-		if !inlinedIndices[origIdx] {
-			if origIdx != newIdx {
-				sqlTemplate = strings.ReplaceAll(sqlTemplate, fmt.Sprintf("$%d", origIdx), fmt.Sprintf("$%d", newIdx))
+	return rewriteSQLPlaceholders(sqlTemplate, replacements), params, nil
+}
+
+func rewriteSQLPlaceholders(sqlTemplate string, replacements []string) string {
+	var rewritten strings.Builder
+	rewritten.Grow(len(sqlTemplate))
+	for i := 0; i < len(sqlTemplate); {
+		switch {
+		case sqlTemplate[i] == '\'' || sqlTemplate[i] == '"':
+			i = copySQLQuoted(&rewritten, sqlTemplate, i, sqlTemplate[i])
+		case strings.HasPrefix(sqlTemplate[i:], "--"):
+			i = copySQLLineComment(&rewritten, sqlTemplate, i)
+		case strings.HasPrefix(sqlTemplate[i:], "/*"):
+			i = copySQLBlockComment(&rewritten, sqlTemplate, i)
+		case sqlTemplate[i] == '$':
+			if delimiter := sqlDollarQuoteDelimiter(sqlTemplate, i); delimiter != "" {
+				end := strings.Index(sqlTemplate[i+len(delimiter):], delimiter)
+				if end < 0 {
+					rewritten.WriteString(sqlTemplate[i:])
+					return rewritten.String()
+				}
+				end += i + 2*len(delimiter)
+				rewritten.WriteString(sqlTemplate[i:end])
+				i = end
+				continue
 			}
-			newIdx++
+			i = rewriteSQLPlaceholder(&rewritten, sqlTemplate, i, replacements)
+		default:
+			rewritten.WriteByte(sqlTemplate[i])
+			i++
 		}
 	}
+	return rewritten.String()
+}
 
-	return sqlTemplate, params, nil
+func copySQLQuoted(dst *strings.Builder, sqlTemplate string, start int, quote byte) int {
+	dst.WriteByte(quote)
+	for i := start + 1; i < len(sqlTemplate); {
+		dst.WriteByte(sqlTemplate[i])
+		if sqlTemplate[i] == '\\' && i+1 < len(sqlTemplate) {
+			dst.WriteByte(sqlTemplate[i+1])
+			i += 2
+			continue
+		}
+		if sqlTemplate[i] == quote {
+			if i+1 < len(sqlTemplate) && sqlTemplate[i+1] == quote {
+				dst.WriteByte(quote)
+				i += 2
+				continue
+			}
+			return i + 1
+		}
+		i++
+	}
+	return len(sqlTemplate)
+}
+
+func copySQLLineComment(dst *strings.Builder, sqlTemplate string, start int) int {
+	end := strings.IndexByte(sqlTemplate[start:], '\n')
+	if end < 0 {
+		dst.WriteString(sqlTemplate[start:])
+		return len(sqlTemplate)
+	}
+	end += start + 1
+	dst.WriteString(sqlTemplate[start:end])
+	return end
+}
+
+func copySQLBlockComment(dst *strings.Builder, sqlTemplate string, start int) int {
+	depth := 0
+	for i := start; i < len(sqlTemplate); {
+		switch {
+		case strings.HasPrefix(sqlTemplate[i:], "/*"):
+			depth++
+			dst.WriteString("/*")
+			i += 2
+		case strings.HasPrefix(sqlTemplate[i:], "*/"):
+			depth--
+			dst.WriteString("*/")
+			i += 2
+			if depth == 0 {
+				return i
+			}
+		default:
+			dst.WriteByte(sqlTemplate[i])
+			i++
+		}
+	}
+	return len(sqlTemplate)
+}
+
+func sqlDollarQuoteDelimiter(sqlTemplate string, start int) string {
+	if start+1 >= len(sqlTemplate) {
+		return ""
+	}
+	if sqlTemplate[start+1] == '$' {
+		return "$$"
+	}
+	first := sqlTemplate[start+1]
+	if !((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z') || first == '_') {
+		return ""
+	}
+	end := start + 2
+	for end < len(sqlTemplate) {
+		char := sqlTemplate[end]
+		if char == '$' {
+			return sqlTemplate[start : end+1]
+		}
+		if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
+			(char >= '0' && char <= '9') || char == '_') {
+			return ""
+		}
+		end++
+	}
+	return ""
+}
+
+func rewriteSQLPlaceholder(dst *strings.Builder, sqlTemplate string, start int, replacements []string) int {
+	if start+1 == len(sqlTemplate) || sqlTemplate[start+1] < '0' || sqlTemplate[start+1] > '9' {
+		dst.WriteByte('$')
+		return start + 1
+	}
+	end := start + 2
+	for end < len(sqlTemplate) && sqlTemplate[end] >= '0' && sqlTemplate[end] <= '9' {
+		end++
+	}
+	origIdx, err := strconv.Atoi(sqlTemplate[start+1 : end])
+	if err == nil && origIdx > 0 && origIdx < len(replacements) {
+		dst.WriteString(replacements[origIdx])
+	} else {
+		dst.WriteString(sqlTemplate[start:end])
+	}
+	return end
 }

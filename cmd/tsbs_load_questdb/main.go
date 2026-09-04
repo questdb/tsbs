@@ -27,26 +27,26 @@ import (
 const (
 	protocolILP              = "ilp"
 	protocolILPHTTP          = "ilp-http"
-	protocolQWIP             = "qwip"
+	protocolQWP              = "qwp"
 	defaultIngestionProtocol = protocolILP
 )
 
 func validateIngestionProtocol(value string) error {
 	switch value {
-	case protocolILP, protocolILPHTTP, protocolQWIP:
+	case protocolILP, protocolILPHTTP, protocolQWP:
 		return nil
 	default:
 		return fmt.Errorf("unknown protocol %q, expected %q, %q or %q",
-			value, protocolILP, protocolILPHTTP, protocolQWIP)
+			value, protocolILP, protocolILPHTTP, protocolQWP)
 	}
 }
 
 func validateQwpAckTimeout(selectedProtocol string, timeoutMs uint) error {
-	if selectedProtocol != protocolQWIP {
+	if selectedProtocol != protocolQWP {
 		return nil
 	}
 	if timeoutMs == 0 {
-		return fmt.Errorf("--qwp-close-timeout-ms must be greater than zero for --protocol=%s", protocolQWIP)
+		return fmt.Errorf("--qwp-close-timeout-ms must be greater than zero for --protocol=%s", protocolQWP)
 	}
 	if uint64(timeoutMs) > uint64((time.Duration(1<<63-1))/time.Millisecond) {
 		return fmt.Errorf("--qwp-close-timeout-ms is too large")
@@ -109,7 +109,7 @@ func init() {
 	pflag.CommandLine.Bool("tls", false, "Whether to use TLS encryption for database connection. The certificate check is disabled, so the client will trust any server")
 	pflag.CommandLine.String("auth-id", "", "ILP authentication token id")
 	pflag.CommandLine.String("auth-token", "", "ILP authentication token")
-	pflag.CommandLine.String("protocol", defaultIngestionProtocol, "Ingestion protocol: 'ilp' (influx line protocol over TCP), 'ilp-http' (influx line protocol over HTTP), or 'qwip' (QuestDB Wire Ingestion Protocol over WebSocket)")
+	pflag.CommandLine.String("protocol", defaultIngestionProtocol, "Ingestion protocol: 'ilp' (line protocol over TCP), 'ilp-http' (line protocol over HTTP), or 'qwp' (QWP ingress over WebSocket)")
 	pflag.CommandLine.String("ilp-http-addr", "127.0.0.1:9000", "QuestDB HTTP ip:port for --protocol=ilp-http")
 	pflag.CommandLine.String("qwp-conf", "", "Full QWP client configuration string. Overrides every other QWP connection flag")
 	pflag.CommandLine.String("qwp-user", "", "QWP basic auth user name")
@@ -118,7 +118,7 @@ func init() {
 	pflag.CommandLine.String("qwp-sf-dir", "", "QWP store-and-forward directory. Empty means memory mode, which is what a throughput benchmark wants")
 	pflag.CommandLine.Bool("qwp-await-ack", false, "Wait for the server to acknowledge every batch before counting it. Slower, but every reported row is server-confirmed when counted")
 	pflag.CommandLine.Bool("qwp-nano-timestamps", false, "Send nanosecond designated timestamps over QWP. Off by default so that the table matches the one the ILP path creates, which is microsecond resolution")
-	pflag.CommandLine.Uint("qwp-close-timeout-ms", 60000, "Overall QWIP shutdown deadline for final acknowledgement and sender close")
+	pflag.CommandLine.Uint("qwp-close-timeout-ms", 60000, "Overall QWP ingress shutdown deadline for final acknowledgement and sender close")
 	target.TargetSpecificFlags("", pflag.CommandLine)
 	pflag.Parse()
 
@@ -169,7 +169,7 @@ func (b *benchmark) GetDataSource() targets.DataSource {
 
 func (b *benchmark) GetBatchFactory() targets.BatchFactory {
 	if qwpDec != nil {
-		return &qwpFactory{}
+		return &qwpFactory{dec: qwpDec}
 	}
 	return &factory{}
 }
@@ -181,7 +181,7 @@ func (b *benchmark) GetPointIndexer(_ uint) targets.PointIndexer {
 func (b *benchmark) GetProcessor() targets.Processor {
 	// Both client-library transports share the row-builder processor;
 	// only the legacy raw-socket ILP path has its own.
-	if protocol == protocolQWIP || protocol == protocolILPHTTP {
+	if protocol == protocolQWP || protocol == protocolILPHTTP {
 		return &qwpProcessor{}
 	}
 	return &processor{}
