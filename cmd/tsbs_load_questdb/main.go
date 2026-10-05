@@ -68,6 +68,8 @@ var (
 	awaitAck           bool
 	nanoTimestamps     bool
 	qwpCloseTimeoutMs  uint
+	qwpPreencodeReplay bool
+	tagsAsVarchar      bool
 	useTLS             bool
 	authTokenId        string
 	authToken          string
@@ -119,6 +121,8 @@ func init() {
 	pflag.CommandLine.Bool("qwp-await-ack", false, "Wait for the server to acknowledge every batch before counting it. Slower, but every reported row is server-confirmed when counted")
 	pflag.CommandLine.Bool("qwp-nano-timestamps", false, "Send nanosecond designated timestamps over QWP. Off by default so that the table matches the one the ILP path creates, which is microsecond resolution")
 	pflag.CommandLine.Uint("qwp-close-timeout-ms", 60000, "Overall QWP ingress shutdown deadline for final acknowledgement and sender close")
+	pflag.CommandLine.Bool("qwp-preencode-replay", false, "Pre-encode binary TSBS input into QWP WebSocket frames outside the timed interval, then replay those frames. This measures server ingestion without row-builder CPU")
+	pflag.CommandLine.Bool("qwp-tags-as-varchar", false, "Send tag columns as VARCHAR strings over QWP instead of SYMBOL, so no per-frame symbol dictionary is shipped. The server table can still store them as SYMBOL. Trades larger low-cardinality frames for no dictionary growth at high cardinality")
 	target.TargetSpecificFlags("", pflag.CommandLine)
 	pflag.Parse()
 
@@ -150,6 +154,8 @@ func init() {
 	if err := validateQwpAckTimeout(protocol, qwpCloseTimeoutMs); err != nil {
 		panic(err)
 	}
+	qwpPreencodeReplay = viper.GetBool("qwp-preencode-replay")
+	tagsAsVarchar = viper.GetBool("qwp-tags-as-varchar")
 	useTLS = viper.GetBool("tls")
 	authTokenId = viper.GetString("auth-id")
 	authToken = viper.GetString("auth-token")
@@ -306,6 +312,25 @@ func main() {
 		if err != nil {
 			fatal("failed to read QWP data file: %v", err)
 		}
+	}
+
+	if qwpPreencodeReplay {
+		if protocol != protocolQWP {
+			fatal("--qwp-preencode-replay requires --protocol=%s", protocolQWP)
+		}
+		if qwpDec == nil {
+			fatal("--qwp-preencode-replay requires binary QWP input generated with --format=questdb-qwp")
+		}
+		if qwpConfString != "" {
+			fatal("--qwp-preencode-replay does not support --qwp-conf; use the explicit QWP address and authentication flags")
+		}
+		if awaitAck {
+			fatal("--qwp-await-ack paces every generated batch and is incompatible with raw replay; replay validates the final cumulative ACK instead")
+		}
+		if err := runQwpPreencodedReplay(qwpDec, config); err != nil {
+			fatal("QWP pre-encoded replay failed: %v", err)
+		}
+		return
 	}
 
 	loader.RunBenchmark(&benchmark{})
