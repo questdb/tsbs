@@ -18,6 +18,10 @@ func testIfInInt64Slice(t *testing.T, arr []int64, choice int64) {
 }
 
 func TestMemMeasurementTick(t *testing.T) {
+	// Seed before constructing the measurement: its starting values come from
+	// the global source as well. Seeding only before Tick left them random, so
+	// a value could start near a clamp bound and not move, failing at random.
+	rand.Seed(123)
 	now := time.Now()
 	m := NewMemMeasurement(now)
 	duration := time.Second
@@ -29,7 +33,6 @@ func TestMemMeasurementTick(t *testing.T) {
 		oldVals[string(f)] = m.Distributions[i].Get()
 	}
 
-	rand.Seed(123)
 	m.Tick(duration)
 	err := testDistributionsAreDifferent(oldVals, m.SubsystemMeasurement, fields)
 	if err != nil {
@@ -109,12 +112,14 @@ func TestMemMeasurementToPoint(t *testing.T) {
 		t.Errorf("memory semantics do not make sense: %d - %d != %d", total, used, available)
 	}
 
-	usedPerc := 100.0 * float64(used) / float64(total)
+	// Mirror ToPoint's operation order exactly: 100*(x/total) and
+	// (100*x)/total round differently, and the comparison is exact.
+	usedPerc := 100.0 * (float64(used) / float64(total))
 	if got := p.GetFieldValue([]byte("used_percent")); got != usedPerc {
 		t.Errorf("memory semantics do not make sense (used perc): got %f want %f", got, usedPerc)
 	}
 
-	availablePerc := 100.0 * float64(available) / float64(total)
+	availablePerc := 100.0 * (float64(available) / float64(total))
 	if got := p.GetFieldValue([]byte("available_percent")); got != availablePerc {
 		t.Errorf("memory semantics do not make sense (available perc): got %f want %f", got, availablePerc)
 	}
