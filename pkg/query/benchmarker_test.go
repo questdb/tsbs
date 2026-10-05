@@ -1,6 +1,7 @@
 package query
 
 import (
+	"errors"
 	"golang.org/x/time/rate"
 	"io/ioutil"
 	"math"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 type testProcessor struct {
@@ -60,6 +62,52 @@ func TestProcessorHandler(t *testing.T) {
 	}
 	if p1.count+p2.count != qLimit {
 		t.Errorf("total queries wrong: want %d got %d", qLimit, p1.count+p2.count)
+	}
+}
+
+type closingTestProcessor struct {
+	testProcessor
+	closeCalled bool
+	closeErr    error
+}
+
+func (p *closingTestProcessor) Close() error {
+	p.closeCalled = true
+	return p.closeErr
+}
+
+func callProcessorHandler(b *BenchmarkRunner, wg *sync.WaitGroup, processor Processor) (recovered interface{}) {
+	defer func() { recovered = recover() }()
+	b.processorHandler(wg, rate.NewLimiter(rate.Inf, 0), &testQueryPool, processor, 0)
+	return nil
+}
+
+func TestProcessorHandlerClosesOptionalProcessorAndSurfacesError(t *testing.T) {
+	marker := errors.New("client close failed")
+	p := &closingTestProcessor{closeErr: marker}
+	b := NewBenchmarkRunner(BenchmarkRunnerConfig{})
+	b.ch = make(chan Query)
+	close(b.ch)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	recovered := callProcessorHandler(b, &wg, p)
+	if !p.closeCalled {
+		t.Fatal("optional processor Close was not called")
+	}
+	if !errors.Is(recovered.(error), marker) {
+		t.Fatalf("worker panic = %v, want close error %v", recovered, marker)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("worker wait group was not released after close error")
 	}
 }
 

@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -23,11 +26,16 @@ type recordingSender struct {
 	sb   strings.Builder
 	rows []string
 
-	flushes  int
-	awaited  []int64
-	nextFsn  int64
-	closed   bool
-	closeErr error
+	flushes              int
+	awaited              []int64
+	awaitDeadline        []time.Time
+	nextFsn              int64
+	closed               bool
+	closeErr             error
+	closeDeadline        time.Time
+	requireCloseDeadline bool
+	blockClose           bool
+	events               []string
 }
 
 func (s *recordingSender) Table(name string) qdb.LineSender {
@@ -86,13 +94,28 @@ func (s *recordingSender) FlushAndGetSequence(_ context.Context) (int64, error) 
 	return s.nextFsn, nil
 }
 
-func (s *recordingSender) AwaitAckedFsn(_ context.Context, target int64) error {
+func (s *recordingSender) AwaitAckedFsn(ctx context.Context, target int64) error {
 	s.awaited = append(s.awaited, target)
+	deadline, _ := ctx.Deadline()
+	s.awaitDeadline = append(s.awaitDeadline, deadline)
+	s.events = append(s.events, fmt.Sprintf("await:%d", target))
 	return nil
 }
 
-func (s *recordingSender) Close(_ context.Context) error {
+func (s *recordingSender) Close(ctx context.Context) error {
 	s.closed = true
+	s.events = append(s.events, "close")
+	if s.requireCloseDeadline {
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			return errors.New("close context has no deadline")
+		}
+		s.closeDeadline = deadline
+	}
+	if s.blockClose {
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	return s.closeErr
 }
 
@@ -115,6 +138,58 @@ func newTestILPHTTPProcessor() (*qwpProcessor, *recordingSender) {
 		sender: s,
 		intern: make(map[string]string),
 	}, s
+}
+
+func TestQwpInitTypeMismatchDoesNotExposeSenderConfiguration(t *testing.T) {
+	oldProtocol, oldConf, oldFatal := protocol, qwpConfString, fatal
+	defer func() {
+		protocol, qwpConfString, fatal = oldProtocol, oldConf, oldFatal
+	}()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/settings" {
+			http.NotFound(w, r)
+			return
+		}
+		t.Fatalf("unexpected request: %s %s", r.Method, r.URL.Path)
+	}))
+	defer server.Close()
+
+	const secret = "do-not-log-this-token"
+	protocol = protocolQWP
+	qwpConfString = "http::addr=" + strings.TrimPrefix(server.URL, "http://") + ";token=" + secret + ";"
+	var fatalMessage string
+	fatal = func(format string, args ...interface{}) {
+		fatalMessage = fmt.Sprintf(format, args...)
+	}
+
+	p := &qwpProcessor{}
+	p.Init(0, true, false)
+	if p.sender != nil {
+		defer p.sender.Close(context.Background())
+	}
+	if !strings.Contains(fatalMessage, "did not yield a QWP sender") {
+		t.Fatalf("Init did not reach the non-QWP sender error: %q", fatalMessage)
+	}
+	if strings.Contains(fatalMessage, secret) {
+		t.Fatalf("Init error exposed sender credentials: %q", fatalMessage)
+	}
+}
+
+func TestIngestionProtocolContract(t *testing.T) {
+	if defaultIngestionProtocol != protocolILP {
+		t.Fatalf("default ingestion protocol = %q", defaultIngestionProtocol)
+	}
+	for _, value := range []string{"ilp", "ilp-http", "qwp"} {
+		if err := validateIngestionProtocol(value); err != nil {
+			t.Errorf("validateIngestionProtocol(%q): %v", value, err)
+		}
+	}
+	for _, value := range []string{"", "qwip", "qwep", "QWP", " qwp", "qwp "} {
+		if err := validateIngestionProtocol(value); err == nil {
+			t.Errorf("validateIngestionProtocol(%q) succeeded", value)
+		}
+	}
 }
 
 func TestQwpWriteRow(t *testing.T) {
@@ -310,6 +385,124 @@ func TestQwpProcessBatchNoLoad(t *testing.T) {
 	}
 	if len(s.rows) != 0 || s.flushes != 0 {
 		t.Errorf("nothing should have been sent with doLoad=false: %d rows, %d flushes", len(s.rows), s.flushes)
+	}
+}
+
+func TestILPHTTPConfIgnoresQwpOverride(t *testing.T) {
+	oldConf, oldAddr, oldTLS := qwpConfString, questdbILPHTTPAddr, useTLS
+	defer func() {
+		qwpConfString, questdbILPHTTPAddr, useTLS = oldConf, oldAddr, oldTLS
+	}()
+
+	qwpConfString = "ws::addr=qwp.example:9000;"
+	questdbILPHTTPAddr = "http.example:9000"
+	for _, tc := range []struct {
+		tls  bool
+		want string
+	}{
+		{tls: false, want: "http::addr=http.example:9000;auto_flush=off;"},
+		{tls: true, want: "https::addr=http.example:9000;auto_flush=off;tls_verify=unsafe_off;"},
+	} {
+		useTLS = tc.tls
+		if got := ilpHTTPConf(); got != tc.want {
+			t.Errorf("ilpHTTPConf() = %q, want %q", got, tc.want)
+		}
+	}
+}
+
+func TestQwpCloseAwaitsLastPublishedFsnBeforeSenderClose(t *testing.T) {
+	oldTimeout, oldConf, oldAwait := qwpCloseTimeoutMs, qwpConfString, awaitAck
+	defer func() {
+		qwpCloseTimeoutMs, qwpConfString, awaitAck = oldTimeout, oldConf, oldAwait
+	}()
+	awaitAck = false
+
+	for _, tc := range []struct {
+		name      string
+		conf      string
+		timeoutMs uint
+	}{
+		{name: "default config", timeoutMs: 60000},
+		{name: "custom config cannot disable barrier", conf: "ws::addr=other:9000;close_flush_timeout_millis=0;", timeoutMs: 25},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			qwpConfString, qwpCloseTimeoutMs = tc.conf, tc.timeoutMs
+			p, s := newTestQwpProcessor()
+			if err := p.flush(); err != nil {
+				t.Fatal(err)
+			}
+			if err := p.flush(); err != nil {
+				t.Fatal(err)
+			}
+
+			before := time.Now()
+			if err := p.closeSender(); err != nil {
+				t.Fatalf("closeSender: %v", err)
+			}
+			if got, want := s.events, []string{"await:2", "close"}; fmt.Sprint(got) != fmt.Sprint(want) {
+				t.Fatalf("events = %v, want %v", got, want)
+			}
+			if len(s.awaitDeadline) != 1 || s.awaitDeadline[0].IsZero() {
+				t.Fatalf("await deadline = %v, want one bounded deadline", s.awaitDeadline)
+			}
+			remaining := s.awaitDeadline[0].Sub(before)
+			want := time.Duration(tc.timeoutMs) * time.Millisecond
+			if remaining <= 0 || remaining > want+10*time.Millisecond {
+				t.Errorf("deadline remaining = %v, want approximately %v", remaining, want)
+			}
+		})
+	}
+}
+
+func TestQwpCloseTimeoutAlsoBoundsSenderClose(t *testing.T) {
+	oldTimeout := qwpCloseTimeoutMs
+	defer func() { qwpCloseTimeoutMs = oldTimeout }()
+	qwpCloseTimeoutMs = 20
+
+	p, s := newTestQwpProcessor()
+	s.requireCloseDeadline = true
+	s.blockClose = true
+	if err := p.flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	before := time.Now()
+	err := p.closeSender()
+	elapsed := time.Since(before)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("closeSender error = %v, want context deadline exceeded", err)
+	}
+	if s.closeDeadline.IsZero() {
+		t.Fatal("sender Close did not receive a deadline")
+	}
+	if elapsed < 10*time.Millisecond || elapsed > 500*time.Millisecond {
+		t.Fatalf("closeSender elapsed = %v, want the configured 20ms bound", elapsed)
+	}
+}
+
+func TestQwpZeroCloseTimeoutIsRejectedAndCannotSkipAckSilently(t *testing.T) {
+	if err := validateQwpAckTimeout(protocolQWP, 0); err == nil {
+		t.Fatal("validateQwpAckTimeout(qwp, 0) succeeded")
+	}
+	if err := validateQwpAckTimeout(protocolILPHTTP, 0); err != nil {
+		t.Fatalf("ILP/HTTP should not require a QWP ingress ack timeout: %v", err)
+	}
+
+	oldTimeout := qwpCloseTimeoutMs
+	defer func() { qwpCloseTimeoutMs = oldTimeout }()
+	qwpCloseTimeoutMs = 0
+	p, s := newTestQwpProcessor()
+	if err := p.flush(); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.closeSender(); err == nil {
+		t.Fatal("closeSender with zero timeout succeeded")
+	}
+	if len(s.awaited) != 0 {
+		t.Errorf("zero-timeout close unexpectedly awaited with an unbounded context: %v", s.awaited)
+	}
+	if !s.closed {
+		t.Error("sender resources were not closed after zero-timeout error")
 	}
 }
 

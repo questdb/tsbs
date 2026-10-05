@@ -25,10 +25,34 @@ import (
 
 // Ingestion protocols supported by the loader.
 const (
-	protocolQWP     = "qwp"
-	protocolILP     = "ilp"
-	protocolILPHTTP = "ilp-http"
+	protocolILP              = "ilp"
+	protocolILPHTTP          = "ilp-http"
+	protocolQWP              = "qwp"
+	defaultIngestionProtocol = protocolILP
 )
+
+func validateIngestionProtocol(value string) error {
+	switch value {
+	case protocolILP, protocolILPHTTP, protocolQWP:
+		return nil
+	default:
+		return fmt.Errorf("unknown protocol %q, expected %q, %q or %q",
+			value, protocolILP, protocolILPHTTP, protocolQWP)
+	}
+}
+
+func validateQwpAckTimeout(selectedProtocol string, timeoutMs uint) error {
+	if selectedProtocol != protocolQWP {
+		return nil
+	}
+	if timeoutMs == 0 {
+		return fmt.Errorf("--qwp-close-timeout-ms must be greater than zero for --protocol=%s", protocolQWP)
+	}
+	if uint64(timeoutMs) > uint64((time.Duration(1<<63-1))/time.Millisecond) {
+		return fmt.Errorf("--qwp-close-timeout-ms is too large")
+	}
+	return nil
+}
 
 // Program option vars:
 var (
@@ -87,7 +111,7 @@ func init() {
 	pflag.CommandLine.Bool("tls", false, "Whether to use TLS encryption for database connection. The certificate check is disabled, so the client will trust any server")
 	pflag.CommandLine.String("auth-id", "", "ILP authentication token id")
 	pflag.CommandLine.String("auth-token", "", "ILP authentication token")
-	pflag.CommandLine.String("protocol", protocolQWP, "Ingestion protocol: 'qwp' (QuestDB Wire Protocol over WebSocket), 'ilp-http' (influx line protocol over HTTP) or 'ilp' (influx line protocol over TCP)")
+	pflag.CommandLine.String("protocol", defaultIngestionProtocol, "Ingestion protocol: 'ilp' (line protocol over TCP), 'ilp-http' (line protocol over HTTP), or 'qwp' (QWP ingress over WebSocket)")
 	pflag.CommandLine.String("ilp-http-addr", "127.0.0.1:9000", "QuestDB HTTP ip:port for --protocol=ilp-http")
 	pflag.CommandLine.String("qwp-conf", "", "Full QWP client configuration string. Overrides every other QWP connection flag")
 	pflag.CommandLine.String("qwp-user", "", "QWP basic auth user name")
@@ -96,7 +120,7 @@ func init() {
 	pflag.CommandLine.String("qwp-sf-dir", "", "QWP store-and-forward directory. Empty means memory mode, which is what a throughput benchmark wants")
 	pflag.CommandLine.Bool("qwp-await-ack", false, "Wait for the server to acknowledge every batch before counting it. Slower, but every reported row is server-confirmed when counted")
 	pflag.CommandLine.Bool("qwp-nano-timestamps", false, "Send nanosecond designated timestamps over QWP. Off by default so that the table matches the one the ILP path creates, which is microsecond resolution")
-	pflag.CommandLine.Uint("qwp-close-timeout-ms", 60000, "How long Close waits for the server to acknowledge outstanding batches. Close is the loader's ack barrier, so this bounds the wait for the last batches of a run")
+	pflag.CommandLine.Uint("qwp-close-timeout-ms", 60000, "Overall QWP ingress shutdown deadline for final acknowledgement and sender close")
 	pflag.CommandLine.Bool("qwp-preencode-replay", false, "Pre-encode binary TSBS input into QWP WebSocket frames outside the timed interval, then replay those frames. This measures server ingestion without row-builder CPU")
 	pflag.CommandLine.Bool("qwp-tags-as-varchar", false, "Send tag columns as VARCHAR strings over QWP instead of SYMBOL, so no per-frame symbol dictionary is shipped. The server table can still store them as SYMBOL. Trades larger low-cardinality frames for no dictionary growth at high cardinality")
 	target.TargetSpecificFlags("", pflag.CommandLine)
@@ -113,11 +137,8 @@ func init() {
 	}
 
 	protocol = viper.GetString("protocol")
-	switch protocol {
-	case protocolQWP, protocolILP, protocolILPHTTP:
-	default:
-		panic(fmt.Errorf("unknown protocol %q, expected %q, %q or %q",
-			protocol, protocolQWP, protocolILPHTTP, protocolILP))
+	if err := validateIngestionProtocol(protocol); err != nil {
+		panic(err)
 	}
 	questdbILPBindTo = viper.GetString("ilp-bind-to")
 	questdbILPHTTPAddr = viper.GetString("ilp-http-addr")
@@ -130,6 +151,9 @@ func init() {
 	awaitAck = viper.GetBool("qwp-await-ack")
 	nanoTimestamps = viper.GetBool("qwp-nano-timestamps")
 	qwpCloseTimeoutMs = viper.GetUint("qwp-close-timeout-ms")
+	if err := validateQwpAckTimeout(protocol, qwpCloseTimeoutMs); err != nil {
+		panic(err)
+	}
 	qwpPreencodeReplay = viper.GetBool("qwp-preencode-replay")
 	tagsAsVarchar = viper.GetBool("qwp-tags-as-varchar")
 	useTLS = viper.GetBool("tls")
@@ -151,7 +175,7 @@ func (b *benchmark) GetDataSource() targets.DataSource {
 
 func (b *benchmark) GetBatchFactory() targets.BatchFactory {
 	if qwpDec != nil {
-		return &qwpFactory{}
+		return &qwpFactory{dec: qwpDec}
 	}
 	return &factory{}
 }
@@ -186,10 +210,6 @@ func senderConf(numWorker int) string {
 // than the dedicated ILP/TCP pools, whose size varies by build and
 // configuration, which makes it the steadier line protocol baseline.
 func ilpHTTPConf() string {
-	if qwpConfString != "" {
-		return qwpConfString
-	}
-
 	var sb strings.Builder
 	if useTLS {
 		sb.WriteString("https::")

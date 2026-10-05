@@ -37,6 +37,12 @@ type qwpProcessor struct {
 	sender qdb.LineSender
 	qwp    qdb.QwpSender
 
+	// lastFsn is the most recently published QWP ingress sequence. Close uses
+	// it for an explicit acknowledgement barrier that is independent
+	// of the sender's own close configuration.
+	lastFsn      int64
+	hasPublished bool
+
 	// intern keeps a single copy of every table name, column name and
 	// symbol value seen by this worker, so parsing a line does not
 	// allocate a string per token.
@@ -62,23 +68,51 @@ func (p *qwpProcessor) Init(numWorker int, doLoad, _ bool) {
 	if protocol == protocolQWP {
 		qwp, ok := sender.(qdb.QwpSender)
 		if !ok {
-			fatal("configuration %q did not yield a QWP sender, use the ws:: or wss:: scheme", conf)
+			fatal("configured sender did not yield a QWP sender, use the ws:: or wss:: scheme")
 			return
 		}
 		p.qwp = qwp
 	}
 }
 
-// Close drains the sender. For QWP a clean Close waits for outstanding
-// server ACKs (bounded by close_flush_timeout_millis), so it doubles as
-// the end-of-run acknowledgement barrier for everything still in flight.
+// Close explicitly waits for the last published QWP ingress sequence before
+// closing the client. The benchmark's acknowledgement guarantee therefore
+// does not depend on close_flush_timeout_millis in a custom client config.
 func (p *qwpProcessor) Close(doLoad bool) {
 	if !doLoad || p.sender == nil {
 		return
 	}
-	if err := p.sender.Close(p.ctx); err != nil {
+	if err := p.closeSender(); err != nil {
 		fatal("failed to close sender: %v", err)
 	}
+}
+
+func (p *qwpProcessor) closeSender() error {
+	closeCtx := p.ctx
+	cancel := func() {}
+	var ackErr error
+	if p.qwp != nil {
+		if err := validateQwpAckTimeout(protocolQWP, qwpCloseTimeoutMs); err != nil {
+			ackErr = err
+			closeCtx, cancel = context.WithCancel(p.ctx)
+			cancel()
+		} else {
+			closeCtx, cancel = context.WithTimeout(p.ctx, time.Duration(qwpCloseTimeoutMs)*time.Millisecond)
+		}
+	}
+	defer cancel()
+
+	if p.qwp != nil && p.hasPublished && ackErr == nil {
+		if err := p.qwp.AwaitAckedFsn(closeCtx, p.lastFsn); err != nil {
+			ackErr = fmt.Errorf("failed to await final QWP ingress ack for fsn %d: %w", p.lastFsn, err)
+		}
+	}
+
+	closeErr := p.sender.Close(closeCtx)
+	if closeErr != nil {
+		closeErr = fmt.Errorf("failed to close client: %w", closeErr)
+	}
+	return errors.Join(ackErr, closeErr)
 }
 
 func (p *qwpProcessor) ProcessBatch(b targets.Batch, doLoad bool) (uint64, uint64) {
@@ -136,8 +170,10 @@ func (p *qwpProcessor) processBinaryBatch(b *qwpBatch, doLoad bool) (uint64, uin
 	metricCnt := b.metrics
 	rowCnt := b.rows
 
-	// Return the batch buffer to the pool.
-	qwpBufPool.Put(b.buf[:0])
+	// Return the batch buffer to the pool without boxing the slice header.
+	*b.pooledBuf = b.buf[:0]
+	qwpBufPool.Put(b.pooledBuf)
+	b.pooledBuf = nil
 	b.buf = nil
 	return metricCnt, uint64(rowCnt)
 }
@@ -158,6 +194,8 @@ func (p *qwpProcessor) flush() error {
 	if err != nil {
 		return fmt.Errorf("failed to flush QWP batch: %v", err)
 	}
+	p.lastFsn = fsn
+	p.hasPublished = true
 	if awaitAck {
 		if err := p.qwp.AwaitAckedFsn(p.ctx, fsn); err != nil {
 			return fmt.Errorf("failed to await ack for fsn %d: %v", fsn, err)

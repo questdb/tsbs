@@ -116,6 +116,12 @@ type Processor interface {
 	ProcessQuery(q Query, isWarm bool) ([]*Stat, error)
 }
 
+// ProcessorCloser is optionally implemented by processors that own per-worker
+// clients or connections.
+type ProcessorCloser interface {
+	Close() error
+}
+
 // GetBufferedReader returns the buffered Reader that should be used by the loader
 func (b *BenchmarkRunner) GetBufferedReader() *bufio.Reader {
 	if b.br == nil {
@@ -217,6 +223,23 @@ func (b *BenchmarkRunner) saveTestResult(took time.Duration, start time.Time, en
 }
 
 func (b *BenchmarkRunner) processorHandler(wg *sync.WaitGroup, rateLimiter *rate.Limiter, queryPool *sync.Pool, processor Processor, workerNum int) {
+	defer wg.Done()
+	defer func() {
+		workerPanic := recover()
+		var closeErr error
+		if closer, ok := processor.(ProcessorCloser); ok {
+			closeErr = closer.Close()
+		}
+		switch {
+		case workerPanic != nil && closeErr != nil:
+			panic(fmt.Errorf("query worker failed: %v; processor close failed: %w", workerPanic, closeErr))
+		case workerPanic != nil:
+			panic(workerPanic)
+		case closeErr != nil:
+			panic(fmt.Errorf("processor close failed: %w", closeErr))
+		}
+	}()
+
 	processor.Init(workerNum)
 	for query := range b.ch {
 		r := rateLimiter.Reserve()
@@ -242,7 +265,6 @@ func (b *BenchmarkRunner) processorHandler(wg *sync.WaitGroup, rateLimiter *rate
 		}
 		queryPool.Put(query)
 	}
-	wg.Done()
 }
 
 func getRateLimiter(limitRPS uint64, workers uint) *rate.Limiter {

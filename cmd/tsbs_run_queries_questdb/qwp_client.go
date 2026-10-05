@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"iter"
 	"os"
 	"strings"
 	"time"
@@ -40,10 +41,11 @@ func NewQwpClient(conf string, opts *QwpClientDoOptions) (*QwpClient, error) {
 	return &QwpClient{client: client, ctx: ctx, opts: opts}, nil
 }
 
-func (c *QwpClient) Close() {
-	if c.client != nil {
-		c.client.Close(c.ctx)
+func (c *QwpClient) Close() error {
+	if c.client == nil {
+		return nil
 	}
+	return c.client.Close(c.ctx)
 }
 
 // Do runs one query and returns its latency in milliseconds. Like the
@@ -60,12 +62,19 @@ func (c *QwpClient) Do(hq *query.HTTP) (float64, error) {
 	q := c.client.Query(c.ctx, sql, qwpBinds(params))
 	defer q.Close()
 
-	var rows int64
-	for batch, err := range q.Batches() {
-		if err != nil {
-			return 0, fmt.Errorf("query failed: %v (sql: %s)", err, sql)
+	rows, err := drainQwpRows(func(yield func(int, error) bool) {
+		for batch, err := range q.Batches() {
+			count := 0
+			if err == nil {
+				count = batch.RowCount()
+			}
+			if !yield(count, err) {
+				return
+			}
 		}
-		rows += int64(batch.RowCount())
+	})
+	if err != nil {
+		return 0, fmt.Errorf("query failed: %v (sql: %s)", err, sql)
 	}
 
 	lag := float64(time.Since(start).Nanoseconds()) / 1e6
@@ -89,34 +98,83 @@ func (c *QwpClient) Do(hq *query.HTTP) (float64, error) {
 	return lag, nil
 }
 
-// qwpBinds binds the scalar parameters left after array inlining. The
-// generator emits them as JSON, so numbers arrive as float64 and
-// timestamps as strings; QuestDB casts a varchar bind to the column type
-// it is compared against, which is what the PostgreSQL path relies on
-// too.
+func drainQwpRows(batches iter.Seq2[int, error]) (int64, error) {
+	var rows int64
+	for count, err := range batches {
+		if err != nil {
+			return rows, err
+		}
+		rows += int64(count)
+	}
+	return rows, nil
+}
+
+type qwpBindKind uint8
+
+const (
+	qwpBindVarchar qwpBindKind = iota
+	qwpBindLong
+	qwpBindDouble
+	qwpBindBoolean
+	qwpBindNullVarchar
+)
+
+type qwpBindAction struct {
+	index       int
+	kind        qwpBindKind
+	stringValue string
+	longValue   int64
+	doubleValue float64
+	boolValue   bool
+}
+
+// qwpBindActions converts scalar parameters into ordered bind operations.
+// JSON numbers arrive as float64; whole numbers are bound as longs.
+func qwpBindActions(params []interface{}) []qwpBindAction {
+	actions := make([]qwpBindAction, 0, len(params))
+	for i, p := range params {
+		action := qwpBindAction{index: i}
+		switch v := p.(type) {
+		case string:
+			action.kind = qwpBindVarchar
+			action.stringValue = v
+		case float64:
+			if v == float64(int64(v)) {
+				action.kind = qwpBindLong
+				action.longValue = int64(v)
+			} else {
+				action.kind = qwpBindDouble
+				action.doubleValue = v
+			}
+		case bool:
+			action.kind = qwpBindBoolean
+			action.boolValue = v
+		case nil:
+			action.kind = qwpBindNullVarchar
+		default:
+			action.kind = qwpBindVarchar
+			action.stringValue = fmt.Sprintf("%v", v)
+		}
+		actions = append(actions, action)
+	}
+	return actions
+}
+
+// qwpBinds applies the tested ordered bind actions to the client bind buffer.
 func qwpBinds(params []interface{}) qdb.QwpQueryOption {
 	return qdb.WithQwpQueryBinds(func(b *qdb.QwpBinds) {
-		for i, p := range params {
-			// Bind indexes are zero-based: $1 in the SQL is index 0,
-			// and they must be set in order.
-			idx := i
-			switch v := p.(type) {
-			case string:
-				b.VarcharBind(idx, v)
-			case float64:
-				// JSON has no integer type: bind whole numbers as
-				// longs so they compare against integer columns.
-				if v == float64(int64(v)) {
-					b.LongBind(idx, int64(v))
-				} else {
-					b.DoubleBind(idx, v)
-				}
-			case bool:
-				b.BooleanBind(idx, v)
-			case nil:
-				b.NullVarcharBind(idx)
-			default:
-				b.VarcharBind(idx, fmt.Sprintf("%v", v))
+		for _, action := range qwpBindActions(params) {
+			switch action.kind {
+			case qwpBindVarchar:
+				b.VarcharBind(action.index, action.stringValue)
+			case qwpBindLong:
+				b.LongBind(action.index, action.longValue)
+			case qwpBindDouble:
+				b.DoubleBind(action.index, action.doubleValue)
+			case qwpBindBoolean:
+				b.BooleanBind(action.index, action.boolValue)
+			case qwpBindNullVarchar:
+				b.NullVarcharBind(action.index)
 			}
 		}
 	})

@@ -97,7 +97,7 @@ func testWriterMatchesConfig(w *HTTPWriter, conf HTTPWriterConfig, consistency s
 }
 
 func TestNewHTTPWriter(t *testing.T) {
-	w := NewHTTPWriter(testConf, testConsistency)
+	w := NewHTTPWriter(testConf, testConsistency, false)
 	// Check client name
 	if got := w.client.Name; got != httpClientName {
 		t.Errorf("name of http client is incorrect: got %s want %s", got, httpClientName)
@@ -109,10 +109,21 @@ func TestNewHTTPWriter(t *testing.T) {
 	}
 }
 
+func TestNewHTTPWriterNoSync(t *testing.T) {
+	durable := NewHTTPWriter(testConf, testConsistency, false)
+	if strings.Contains(string(durable.url), "no_sync") {
+		t.Fatalf("durable URL contains no_sync: %s", durable.url)
+	}
+	relaxed := NewHTTPWriter(testConf, testConsistency, true)
+	if got, want := string(relaxed.url), string(durable.url)+"&no_sync=true"; got != want {
+		t.Fatalf("no-sync URL = %q, want %q", got, want)
+	}
+}
+
 func TestHTTPWriterInitializeReq(t *testing.T) {
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
-	w := NewHTTPWriter(testConf, testConsistency)
+	w := NewHTTPWriter(testConf, testConsistency, false)
 	body := "this is a test body"
 	w.initializeReq(req, []byte(body), false, "")
 
@@ -141,7 +152,7 @@ func TestHTTPWriterExecuteReq(t *testing.T) {
 	// Success case test, make sure no error and positive latency
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
-	w := NewHTTPWriter(testConf, testConsistency)
+	w := NewHTTPWriter(testConf, testConsistency, false)
 	body := "this is a test body"
 	normalURL := w.url // save for later modification
 	w.initializeReq(req, []byte(body), false, "")

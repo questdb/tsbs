@@ -57,7 +57,7 @@ func TestProcessorInitWithHTTPWriterConfig(t *testing.T) {
 	}
 	workerNum := 4
 	p := &processor{}
-	w := NewHTTPWriter(testConf, testConsistency)
+	w := NewHTTPWriter(testConf, testConsistency, false)
 	p.initWithHTTPWriter(workerNum, w)
 	p.Close(true)
 
@@ -143,7 +143,7 @@ func TestProcessorProcessBatch(t *testing.T) {
 		}
 
 		p := &processor{}
-		w := NewHTTPWriter(testConf, testConsistency)
+		w := NewHTTPWriter(testConf, testConsistency, false)
 
 		// If the case should backoff, we tell our dummy server to do so by
 		// modifying the URL params. This should keep ProcessBatch in a loop
@@ -188,7 +188,7 @@ func TestProcessorProcessBackoffMessages(t *testing.T) {
 	}
 	workerNum := 4
 	p := &processor{}
-	w := NewHTTPWriter(testConf, testConsistency)
+	w := NewHTTPWriter(testConf, testConsistency, false)
 	p.initWithHTTPWriter(workerNum, w)
 
 	// Sending false at the beginning should do nothing

@@ -3,12 +3,12 @@
 // It reads encoded Query objects from stdin or file, and makes concurrent requests
 // to the provided endpoint. Three transports are supported, selected with
 // --query-protocol: PostgreSQL wire (pgx v5, the default), HTTP/JSON on the REST
-// endpoint, and QWP, the binary QuestDB Wire Protocol that streams results back
-// as columnar batches.
+// endpoint, and QWP egress, which streams results back as columnar batches.
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -21,10 +21,24 @@ import (
 
 // Query transports supported by this runner.
 const (
-	protocolPG   = "pg"
-	protocolHTTP = "http"
-	protocolQWP  = "qwp"
+	protocolPGWire       = "pgwire"
+	protocolHTTP         = "http"
+	protocolQWP          = "qwp"
+	defaultQueryProtocol = protocolPGWire
 )
+
+func resolveQueryProtocol(value string, useHTTP bool) (string, error) {
+	if useHTTP && value == protocolPGWire {
+		return protocolHTTP, nil
+	}
+	switch value {
+	case protocolPGWire, protocolHTTP, protocolQWP:
+		return value, nil
+	default:
+		return "", fmt.Errorf("unknown query protocol %q, expected %q, %q or %q",
+			value, protocolPGWire, protocolHTTP, protocolQWP)
+	}
+}
 
 // Program option vars:
 var (
@@ -69,7 +83,7 @@ func init() {
 	pflag.String("password", "", "Basic auth password (HTTP and QWP modes)")
 
 	// Query transport
-	pflag.String("query-protocol", protocolPG, "Query transport: 'pg' (PostgreSQL wire), 'http' (REST /exec), or 'qwp' (QuestDB Wire Protocol)")
+	pflag.String("query-protocol", defaultQueryProtocol, "Query transport: 'pgwire' (PostgreSQL wire), 'http' (REST /exec), or 'qwp' (QWP egress over WebSocket)")
 
 	// QWP options
 	pflag.String("qwp-addr", "127.0.0.1:9000", "QuestDB wire protocol WebSocket ip:port. Comma-separated list enables failover")
@@ -103,16 +117,9 @@ func init() {
 	qwpQueryConf = viper.GetString("qwp-conf")
 	qwpUseTLS = viper.GetBool("qwp-tls")
 
-	protocol = viper.GetString("query-protocol")
-	if useHTTP && protocol == protocolPG {
-		// Keep the old boolean working for anyone who scripted it.
-		protocol = protocolHTTP
-	}
-	switch protocol {
-	case protocolPG, protocolHTTP, protocolQWP:
-	default:
-		panic(fmt.Errorf("unknown query protocol %q, expected %q, %q or %q",
-			protocol, protocolPG, protocolHTTP, protocolQWP))
+	protocol, err = resolveQueryProtocol(viper.GetString("query-protocol"), useHTTP)
+	if err != nil {
+		panic(err)
 	}
 
 	runner = query.NewBenchmarkRunner(config)
@@ -191,13 +198,15 @@ func (p *processor) ProcessQuery(q query.Query, _ bool) ([]*query.Stat, error) {
 	return []*query.Stat{stat}, nil
 }
 
-func (p *processor) Close() {
+func (p *processor) Close() error {
+	var pgErr, qwpErr error
 	if p.conn != nil {
-		p.conn.Close(p.ctx)
+		pgErr = p.conn.Close(p.ctx)
 	}
 	if p.qwpClient != nil {
-		p.qwpClient.Close()
+		qwpErr = p.qwpClient.Close()
 	}
+	return errors.Join(pgErr, qwpErr)
 }
 
 // processQueryPgx runs a query via native pgx v5, using bind variables
